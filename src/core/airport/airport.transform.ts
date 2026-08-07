@@ -127,7 +127,10 @@ function mapSurface(surface: string | undefined): SurfaceType {
 }
 
 function parseDesignator(part: string): { designator: string; heading: number } | undefined {
-  const match = part.trim().toUpperCase().match(/^(\d{1,2})([LRC]?)$/);
+  const match = part
+    .trim()
+    .toUpperCase()
+    .match(/^(\d{1,2})([LRC]?)$/);
   if (!match) return undefined;
   const number = parseInt(match[1], 10);
   if (number < 1 || number > 36) return undefined;
@@ -320,7 +323,10 @@ export function transformAirport(icaoCode: string, elements: OsmElement[]): Desi
     } else if (aeroway === 'terminal') {
       const terminal = buildTerminal(element);
       if (terminal) {
-        const shortName = uniqueShortName(terminal.payload.shortName, new Set(terminalsByShortName.keys()));
+        const shortName = uniqueShortName(
+          terminal.payload.shortName,
+          new Set(terminalsByShortName.keys()),
+        );
         terminal.payload.shortName = shortName;
         terminalsByShortName.set(shortName, terminal);
       }

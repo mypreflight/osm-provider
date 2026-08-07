@@ -1,7 +1,7 @@
-# airport-details
+# flight-tracker-airport-data-processor
 
-ELT scripts that sync **airport infrastructure** (boundary shapes, runways,
-terminals, parking positions and gates) into the
+ELT that syncs **airport infrastructure** (boundary shapes, runways, terminals,
+parking positions and gates) into the
 [Flight Tracker](https://api.flights.barcz.me) API.
 
 The source is **OpenStreetMap**: openairportmap.org is only a renderer over OSM
@@ -9,11 +9,22 @@ data fetched through the [Overpass API](https://overpass-api.de/), so this tool
 queries Overpass directly — keyed by ICAO code — for the standard `aeroway=*`
 features (`aerodrome`, `runway`, `terminal`, `parking_position`, `gate`).
 
-Like the sibling `operator-list` project this is a collection of TypeScript
-scripts — no framework, no build step. Node 24 runs the `.ts` files directly via
-native type stripping.
+It runs two ways over one shared core (`src/core/`):
 
-## Running
+| Mode | Use |
+| --- | --- |
+| **CLI** | Pull OSM data into reviewable JSON files, hand-edit them, then sync. |
+| **DigitalOcean Functions** | HTTP endpoints so the Flight Tracker API can fetch or refresh airport data on demand. |
+
+Node 24 runs the `.ts` files directly via native type stripping, so the CLI has
+no build step.
+
+> Node type *stripping* (not transformation) is in effect: avoid TypeScript
+> runtime-only constructs — no `enum`, no `namespace`, no constructor parameter
+> properties, no experimental decorators. Use `as const` arrays for enums. All
+> relative imports use explicit `.ts` extensions.
+
+## CLI
 
 Two steps: **pull** OSM data into reviewable JSON files, then **sync** the
 (optionally hand-edited) files into the API.
@@ -34,27 +45,116 @@ npm run sync:airports -- EDDF           # narrow to specific files
 npm run sync:airports -- EDDF --apply   # actually write to the API
 
 npm run typecheck                       # tsc --noEmit
+npm run lint                            # biome check
+npm run lint:fix                        # biome check --write
+npm test                                # jest — same suite CI runs
 ```
 
-`config.ts` auto-loads `.env` if present (`process.loadEnvFile`).
+The CLI loads `.env` if present.
 
-> Node type *stripping* (not transformation) is in effect: avoid TypeScript
-> runtime-only constructs — no `enum`, no `namespace`, no constructor parameter
-> properties, no experimental decorators. Use `as const` arrays for enums. All
-> relative imports use explicit `.ts` extensions.
+## Functions
+
+Two web functions in the `airport` package. Callers must send
+`X-Require-Whisk-Auth: $FUNCTION_SECRET`.
+
+### `airport/pull`
+
+`GET` or `POST`. Returns the same JSON model the CLI writes to
+`data/<ICAO>.json`, compact rather than pretty-printed. Reads from OSM only —
+holds no Flight Tracker credentials and writes nothing.
+
+| Parameter | Required | Meaning |
+| --- | --- | --- |
+| `icao` | yes | Four-letter ICAO code. |
+| `include` | no | Comma-separated subset of `location,shape,runways,terminals,parkingPositions,gates`. |
+| `name` | no | Display name for the airport. Defaults to the ICAO code. |
+| `airportId` | no | Flight Tracker airport id, echoed back into the model. |
+
+```bash
+curl -H "X-Require-Whisk-Auth: $FUNCTION_SECRET" \
+  "$FUNCTIONS_URL/airport/pull?icao=EDDF"
+```
+
+`404` when OSM has no aerodrome for that ICAO code, `503` when every Overpass
+mirror is unavailable, `413` if the result would exceed the platform's 1 MB cap
+(narrow it with `include`).
+
+### `airport/sync`
+
+`POST` only. Signs in with the operations-role credentials from its environment,
+builds the same plan the CLI prints, and executes it only when `apply` is true.
+
+| Parameter | Required | Meaning |
+| --- | --- | --- |
+| `icao` | yes | Four-letter ICAO code. Must already exist in the app. |
+| `apply` | no | Defaults to `false`: plan only, nothing written. |
+| `file` | no | An airport object to sync instead of pulling fresh from OSM — the same shape `pull` returns. |
+
+```bash
+# dry run
+curl -X POST -H "content-type: application/json" \
+  -H "X-Require-Whisk-Auth: $FUNCTION_SECRET" \
+  -d '{"icao":"EDDF"}' "$FUNCTIONS_URL/airport/sync"
+
+# write it
+curl -X POST -H "content-type: application/json" \
+  -H "X-Require-Whisk-Auth: $FUNCTION_SECRET" \
+  -d '{"icao":"EDDF","apply":true}' "$FUNCTIONS_URL/airport/sync"
+```
+
+The response carries a plan summary, a `totals` block when applied, and a capped
+`log`. **`207` means a partial write** — some items landed, some failed; check
+`totals.failed`. `404` means the ICAO code is not in the app.
+
+Run either handler locally:
+
+```bash
+npm run build:functions
+npm run invoke:local -- pull icao=LIPZ include=runways
+npm run invoke:local -- sync icao=LIPZ
+```
+
+## Deploying
+
+Setting this up for the first time? See
+[docs/first-deployment.md](docs/first-deployment.md).
+
+`npm run build:functions` assembles the deployable project into `build/` —
+`build/project.yml` plus one bundled `index.js` per function. `build/` is
+entirely generated and gitignored; the inner `packages/` name is required by the
+platform's builder.
+
+```bash
+doctl serverless install
+doctl serverless connect <namespace>
+npm run deploy                 # build + doctl serverless deploy build
+```
+
+`project.yml` interpolates `${API_BASE_URL}`, `${OSM_USER_AGENT}`,
+`${FLIGHTS_EMAIL}`, `${FLIGHTS_PASSWORD}` and `${FUNCTION_SECRET}` from the
+shell environment, falling back to the `.env` file next to it.
+
+`.github/workflows/integrity.yaml` formats, lints, typechecks, tests and builds
+on every pull request. `.github/workflows/release.yaml` deploys on push to
+`main`, and needs:
+
+- **Secrets:** `DIGITALOCEAN_ACCESS_TOKEN`, `FLIGHTS_EMAIL`, `FLIGHTS_PASSWORD`,
+  `FUNCTION_SECRET`
+- **Variables:** `DO_FUNCTIONS_NAMESPACE`, `API_BASE_URL`, `OSM_USER_AGENT`
 
 ## Sync model
 
 The pipeline is split so the data can be reviewed before it is written:
 
-1. **pull** (`src/pull-airports.ts`): sign in → fetch app airports → for each in
-   scope, query Overpass → transform → assign each parking position and gate to
-   its nearest terminal → write `data/<ICAO>.json`. Edit these files by hand as
-   needed; parking positions and gates reference their terminal by `shortName`
-   and gates reference their parking position by `name`, so reassigning either
-   is a one-field edit, and the same files round-trip cleanly through `sync`.
-2. **sync** (`src/sync-airports.ts`): read `data/*.json` → sign in → fetch
-   existing from the API → `buildAirportPlan` → print → (with `--apply`) execute.
+1. **pull** (`src/core/pull.ts`): query Overpass → transform → assign each
+   parking position and gate to its nearest terminal → an airport model. The CLI
+   writes it to `data/<ICAO>.json`; the function returns it. Edit those files by
+   hand as needed; parking positions and gates reference their terminal by
+   `shortName` and gates reference their parking position by `name`, so
+   reassigning either is a one-field edit, and the same files round-trip cleanly
+   through `sync`.
+2. **sync** (`src/core/sync.ts`): read the model → fetch existing from the API →
+   `buildAirportPlan` → report → (with `--apply` / `apply: true`) execute.
 
 - **Airports already in the app are the unit of work**, matched by **ICAO code**.
   The airport itself is **enrich-only**: only its boundary `shape` and `location`
@@ -92,29 +192,46 @@ The pipeline is split so the data can be reviewed before it is written:
   parking position link); baselines and free-text are written on **create** only,
   so re-runs never clobber human edits. Arrays/shapes compare order-insensitively
   to avoid false diffs.
-- **Dry-run is the default.** Writes happen only with `--apply`, continuing past
-  per-item failures and reporting a summary (non-zero exit if any failed).
+- **Dry-run is the default**, in both modes. Writes happen only with `--apply`
+  or `apply: true`, continuing past per-item failures and reporting a summary.
 
 ## Layout
 
-- `src/config.ts` — env loading + API / Overpass settings.
-- `src/api/client.ts` — `signIn()` + `createClient(token)` authed fetch wrapper.
-- `src/api/airports.ts` — airport + nested runway/terminal/parking-position/gate
-  endpoints.
-- `src/osm/overpass.ts` — Overpass client; `queryAerodrome(icao)` with an
-  `around` fallback for node-only aerodromes and retry/backoff.
-- `src/airport/airport.types.ts` — types/enums mirrored from `/api-json`.
-- `src/airport/geo.ts` — pure geometry helpers (centroid, bearing, distance,
+```
+src/core/        shared pipeline — no fs, no argv, no ambient env
+src/cli/         argv + files + console
+src/function/    DigitalOcean Functions handlers
+build/           generated deployment unit (gitignored)
+scripts/         build + local invoke helpers
+tests/           unit specs for the pure core
+```
+
+- `src/core/config.ts` — `resolveConfig(env)` / `resolveCredentials(env)`.
+- `src/core/logger.ts` — the `Logger` interface the core reports through.
+- `src/core/pull.ts` — `pullAirport()`: Overpass → transform → airport model.
+- `src/core/sync.ts` — `planAirport()`, `applyAirportPlan()`, `summarizePlan()`.
+- `src/core/api/client.ts` — `signIn()` + `createClient()` authed fetch wrapper.
+- `src/core/api/airports.ts` — airport + nested runway/terminal/parking-position/
+  gate endpoints, and `connectAirportsApi()`.
+- `src/core/osm/overpass.ts` — Overpass client; `queryAerodrome(icao, config)`
+  with an `around` fallback for node-only aerodromes and retry/backoff.
+- `src/core/airport/airport.types.ts` — types/enums mirrored from `/api-json`.
+- `src/core/airport/geo.ts` — pure geometry helpers (centroid, bearing, distance,
   nearest terminal, runway threshold selection).
-- `src/airport/airport.transform.ts` — OSM elements → `DesiredAirportData`.
-- `src/airport/airport.file.ts` — the `data/<ICAO>.json` model: assemble
+- `src/core/airport/airport.transform.ts` — OSM elements → `DesiredAirportData`.
+- `src/core/airport/airport.file.ts` — the `data/<ICAO>.json` model: assemble
   (parking position / gate → nearest terminal), a reviewable serializer, and the
   parser.
-- `src/airport/airport.sync.ts` — `buildAirportPlan`, the diff/reconcile logic.
-- `data/<ICAO>.json` — the staged, hand-reviewable sheets produced by `pull`.
+- `src/core/airport/airport.sync.ts` — `buildAirportPlan`, the diff/reconcile logic.
+- `src/function/http.ts` — parameter parsing, method checks, error → status code.
+- `data/<ICAO>.json` — the staged, hand-reviewable sheets produced by the CLI.
 
 ## Auth
 
 Writes require a user with the **operations** role.
 `POST /api/v1/auth/sign-in` returns `{ accessToken }`, sent as
 `Authorization: Bearer`. Each run signs in fresh.
+
+The deployed functions add a separate layer: DigitalOcean rejects any request
+without the correct `X-Require-Whisk-Auth` header before the handler runs. Only
+`airport/sync` carries Flight Tracker credentials.

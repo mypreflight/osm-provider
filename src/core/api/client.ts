@@ -1,4 +1,4 @@
-import { config } from '../config.ts';
+import type { ApiConfig, Credentials } from '../config.ts';
 
 export class ApiError extends Error {
   readonly status: number;
@@ -17,6 +17,10 @@ export class ApiError extends Error {
   }
 }
 
+export interface ApiClient {
+  request<T>(method: string, path: string, body?: unknown): Promise<T>;
+}
+
 async function readBody(response: Response): Promise<unknown> {
   const text = await response.text();
   try {
@@ -26,12 +30,12 @@ async function readBody(response: Response): Promise<unknown> {
   }
 }
 
-export async function signIn(email: string, password: string): Promise<string> {
+export async function signIn(api: ApiConfig, credentials: Credentials): Promise<string> {
   const path = '/api/v1/auth/sign-in';
-  const response = await fetch(`${config.apiBaseUrl}${path}`, {
+  const response = await fetch(`${api.baseUrl}${path}`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email: credentials.email, password: credentials.password }),
   });
   if (!response.ok) {
     throw new ApiError(response.status, 'POST', path, await readBody(response));
@@ -40,9 +44,9 @@ export async function signIn(email: string, password: string): Promise<string> {
   return json.accessToken;
 }
 
-export function createClient(token: string) {
+export function createClient(api: ApiConfig, token: string): ApiClient {
   async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    const response = await fetch(`${config.apiBaseUrl}${path}`, {
+    const response = await fetch(`${api.baseUrl}${path}`, {
       method,
       headers: {
         authorization: `Bearer ${token}`,

@@ -1,4 +1,5 @@
-import { config } from '../config.ts';
+import type { OverpassConfig } from '../config.ts';
+import { silentLogger, type Logger } from '../logger.ts';
 import type { OsmElement, OverpassResponse } from './overpass.types.ts';
 
 const AEROWAY_FEATURES = ['runway', 'terminal', 'parking_position', 'gate'] as const;
@@ -9,9 +10,9 @@ const RETRYABLE_STATUS = new Set([429, 502, 503, 504]);
 export class OverpassError extends Error {}
 
 function areaQuery(icao: string): string {
-  const features = AEROWAY_FEATURES.map(
-    (value) => `  nwr(area.f)["aeroway"="${value}"];`,
-  ).join('\n');
+  const features = AEROWAY_FEATURES.map((value) => `  nwr(area.f)["aeroway"="${value}"];`).join(
+    '\n',
+  );
   return [
     '[out:json][timeout:60];',
     `nwr["aeroway"="aerodrome"]["icao"="${icao}"]->.a;`,
@@ -43,7 +44,7 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function runOnEndpoint(url: string, query: string): Promise<OsmElement[]> {
+async function runOnEndpoint(url: string, query: string, userAgent: string): Promise<OsmElement[]> {
   let lastError: unknown;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
     try {
@@ -51,14 +52,16 @@ async function runOnEndpoint(url: string, query: string): Promise<OsmElement[]> 
         method: 'POST',
         headers: {
           'content-type': 'application/x-www-form-urlencoded',
-          'user-agent': config.osmUserAgent,
+          'user-agent': userAgent,
         },
         body: new URLSearchParams({ data: query }),
       });
       if (RETRYABLE_STATUS.has(response.status)) {
         lastError = new OverpassError(`Overpass ${url} returned ${response.status}`);
       } else if (!response.ok) {
-        throw new OverpassError(`Overpass ${url} returned ${response.status}: ${await response.text()}`);
+        throw new OverpassError(
+          `Overpass ${url} returned ${response.status}: ${await response.text()}`,
+        );
       } else {
         const json = (await response.json()) as OverpassResponse;
         return json.elements ?? [];
@@ -73,16 +76,16 @@ async function runOnEndpoint(url: string, query: string): Promise<OsmElement[]> 
   throw lastError instanceof Error ? lastError : new OverpassError(String(lastError));
 }
 
-async function run(query: string): Promise<OsmElement[]> {
-  const endpoints = config.overpassUrls;
+async function run(query: string, overpass: OverpassConfig, logger: Logger): Promise<OsmElement[]> {
+  const endpoints = overpass.urls;
   let lastError: unknown;
   for (let i = 0; i < endpoints.length; i += 1) {
     try {
-      return await runOnEndpoint(endpoints[i], query);
+      return await runOnEndpoint(endpoints[i], query, overpass.userAgent);
     } catch (error) {
       lastError = error;
       if (i < endpoints.length - 1) {
-        console.warn(`  ~ Overpass endpoint ${endpoints[i]} unavailable; trying next mirror.`);
+        logger.warn(`  ~ Overpass endpoint ${endpoints[i]} unavailable; trying next mirror.`);
       }
     }
   }
@@ -96,11 +99,15 @@ function hasFeatures(elements: OsmElement[]): boolean {
   });
 }
 
-export async function queryAerodrome(icaoCode: string): Promise<OsmElement[]> {
+export async function queryAerodrome(
+  icaoCode: string,
+  overpass: OverpassConfig,
+  logger: Logger = silentLogger,
+): Promise<OsmElement[]> {
   const icao = icaoCode.toUpperCase();
-  const elements = await run(areaQuery(icao));
+  const elements = await run(areaQuery(icao), overpass, logger);
   if (hasFeatures(elements) || elements.length === 0) {
     return elements;
   }
-  return run(aroundQuery(icao));
+  return run(aroundQuery(icao), overpass, logger);
 }
