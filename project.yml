@@ -1,0 +1,34 @@
+targetNamespace: ''
+parameters: {}
+packages:
+  - name: airport
+    environment:
+      API_BASE_URL: '${API_BASE_URL}'
+      OSM_USER_AGENT: '${OSM_USER_AGENT}'
+    functions:
+      # Read-only: OpenStreetMap in, airport JSON out. Deliberately has no
+      # Flight Tracker credentials in its environment.
+      - name: pull
+        runtime: 'nodejs:24'
+        web: true
+        webSecure: '${FUNCTION_SECRET}'
+        limits:
+          # The platform default is 3s; a cold Overpass query plus mirror
+          # fallbacks needs far more. Frankfurt measures ~12s on a good day.
+          timeout: 300000
+          # Raw Overpass "out geom" responses for a big hub are tens of MB.
+          memory: 512
+
+      # Writes into the Flight Tracker API, so it needs the operations role.
+      - name: sync
+        runtime: 'nodejs:24'
+        web: true
+        webSecure: '${FUNCTION_SECRET}'
+        environment:
+          FLIGHTS_EMAIL: '${FLIGHTS_EMAIL}'
+          FLIGHTS_PASSWORD: '${FLIGHTS_PASSWORD}'
+        limits:
+          # Applying a hub is hundreds of sequential API calls (Frankfurt is
+          # ~400), on top of the Overpass pull.
+          timeout: 600000
+          memory: 512

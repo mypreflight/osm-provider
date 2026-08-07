@@ -1,4 +1,5 @@
-import { createClient } from './client.ts';
+import { createClient, signIn, type ApiClient } from './client.ts';
+import type { ApiConfig, Credentials } from '../config.ts';
 import type {
   CreateGateRequest,
   CreateParkingPositionRequest,
@@ -14,8 +15,8 @@ import type {
 
 const BASE = '/api/v1/airport';
 
-export function airportsApi(token: string) {
-  const { request } = createClient(token);
+export function airportsApi(client: ApiClient) {
+  const { request } = client;
 
   return {
     list: () => request<GetAirportResponse[]>('GET', BASE),
@@ -58,4 +59,15 @@ export function airportsApi(token: string) {
     patchGate: (airportId: string, gateId: string, body: Partial<CreateGateRequest>) =>
       request<GetGateResponse>('PATCH', `${BASE}/${airportId}/gate/${gateId}`, body),
   };
+}
+
+export type AirportsApi = ReturnType<typeof airportsApi>;
+
+/** Signs in and returns a ready-to-use airports API. Each run signs in fresh. */
+export async function connectAirportsApi(
+  api: ApiConfig,
+  credentials: Credentials,
+): Promise<AirportsApi> {
+  const token = await signIn(api, credentials);
+  return airportsApi(createClient(api, token));
 }

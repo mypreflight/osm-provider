@@ -1,8 +1,4 @@
-import type {
-  AirportFile,
-  AirportFileGate,
-  AirportFileParkingPosition,
-} from './airport.file.ts';
+import type { AirportFile, AirportFileGate, AirportFileParkingPosition } from './airport.file.ts';
 import type {
   Coordinates,
   CreateGateRequest,
@@ -136,7 +132,10 @@ function shapeEqual(a: Coordinates[] | undefined, b: Coordinates[] | undefined):
   return canonicalRing(left) === canonicalRing(right);
 }
 
-function diffAirport(file: AirportFile, airport: GetAirportResponse): {
+function diffAirport(
+  file: AirportFile,
+  airport: GetAirportResponse,
+): {
   changes: FieldChange[];
   payload: UpdateAirportRequest;
 } {
@@ -168,7 +167,12 @@ function planRunways(
   return desired.map((runway) => {
     const current = byDesignator.get(runway.designator.toUpperCase());
     if (!current) {
-      return { action: 'create', designator: runway.designator, changes: [], createPayload: runway };
+      return {
+        action: 'create',
+        designator: runway.designator,
+        changes: [],
+        createPayload: runway,
+      };
     }
 
     const changes: FieldChange[] = [];
@@ -208,7 +212,12 @@ function planTerminals(
   return desired.map((terminal) => {
     const current = byShortName.get(terminal.shortName);
     if (!current) {
-      return { action: 'create', shortName: terminal.shortName, changes: [], createPayload: terminal };
+      return {
+        action: 'create',
+        shortName: terminal.shortName,
+        changes: [],
+        createPayload: terminal,
+      };
     }
 
     const changes: FieldChange[] = [];

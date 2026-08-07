@@ -1,16 +1,60 @@
 {
-  "name": "airport-details",
+  "name": "flight-tracker-airport-data-processor",
   "version": "1.0.0",
   "description": "ELT tool that syncs OpenStreetMap airport data into the Flight Tracker API",
   "type": "module",
   "scripts": {
-    "pull:airports": "node src/pull-airports.ts",
-    "sync:airports": "node src/sync-airports.ts",
-    "typecheck": "tsc --noEmit"
+    "pull:airports": "node src/cli/pull.ts",
+    "sync:airports": "node src/cli/sync.ts",
+    "build:functions": "node scripts/build-functions.ts",
+    "invoke:local": "node scripts/invoke-local.ts",
+    "deploy": "npm run build:functions && doctl serverless deploy build",
+    "typecheck": "tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format .",
+    "format:fix": "biome format --write .",
+    "test": "jest",
+    "test:watch": "jest --watch",
+    "test:cov": "jest --coverage"
   },
   "devDependencies": {
-    "@types/node": "^24.13.2",
+    "@biomejs/biome": "^2.5.7",
+    "@types/jest": "^30.0.0",
+    "@types/node": "^24.13.3",
+    "esbuild": "^0.25.0",
+    "jest": "^30.4.2",
+    "ts-jest": "^29.4.12",
     "typescript": "^5.5.3"
   },
-  "private": true
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "rootDir": ".",
+    "roots": [
+      "<rootDir>/tests"
+    ],
+    "moduleFileExtensions": [
+      "ts",
+      "js",
+      "json"
+    ],
+    "testMatch": [
+      "**/*.spec.ts"
+    ],
+    "moduleNameMapper": {
+      "^(\\.{1,2}/.*)\\.js$": "$1"
+    },
+    "transform": {
+      "^.+\\.ts$": [
+        "ts-jest",
+        {
+          "tsconfig": "tsconfig.spec.json"
+        }
+      ]
+    }
+  }
 }

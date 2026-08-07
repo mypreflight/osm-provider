@@ -29,7 +29,9 @@ function isClosed(ring: Coordinates[]): boolean {
 }
 
 export function assembleRings(segments: Coordinates[][]): Coordinates[][] {
-  const remaining = segments.filter((segment) => segment.length >= 2).map((segment) => segment.slice());
+  const remaining = segments
+    .filter((segment) => segment.length >= 2)
+    .map((segment) => segment.slice());
   const rings: Coordinates[][] = [];
   while (remaining.length > 0) {
     let ring = remaining.shift() as Coordinates[];
@@ -92,8 +94,7 @@ export function haversineMeters(a: Coordinates, b: Coordinates): number {
   const dLon = toRadians(b.longitude - a.longitude);
   const lat1 = toRadians(a.latitude);
   const lat2 = toRadians(b.latitude);
-  const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
   return 2 * EARTH_RADIUS_METERS * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
@@ -156,8 +157,7 @@ function pointInRing(point: Coordinates, ring: Coordinates[]): boolean {
     const crosses =
       a.latitude > point.latitude !== b.latitude > point.latitude &&
       point.longitude <
-        ((b.longitude - a.longitude) * (point.latitude - a.latitude)) /
-          (b.latitude - a.latitude) +
+        ((b.longitude - a.longitude) * (point.latitude - a.latitude)) / (b.latitude - a.latitude) +
           a.longitude;
     if (crosses) inside = !inside;
   }

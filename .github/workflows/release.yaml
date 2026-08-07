@@ -1,0 +1,38 @@
+name: 'release'
+
+on:
+  push:
+    branches: ['main']
+
+jobs:
+  functions:
+    runs-on: 'ubuntu-24.04'
+    environment: production
+    steps:
+      - name: 'Clone repository'
+        uses: 'actions/checkout@v4'
+      - name: 'Set up Node'
+        uses: 'actions/setup-node@v4'
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: 'Install dependencies'
+        run: 'npm ci'
+      - name: 'Authenticate doctl'
+        uses: 'digitalocean/action-doctl@v2'
+        with:
+          token: ${{ secrets.DIGITALOCEAN_ACCESS_TOKEN }}
+      - name: 'Deploy functions'
+        env:
+          API_BASE_URL: ${{ vars.API_BASE_URL }}
+          OSM_USER_AGENT: ${{ vars.OSM_USER_AGENT }}
+          FLIGHTS_EMAIL: ${{ secrets.FLIGHTS_EMAIL }}
+          FLIGHTS_PASSWORD: ${{ secrets.FLIGHTS_PASSWORD }}
+          FUNCTION_SECRET: ${{ secrets.FUNCTION_SECRET }}
+        run: |
+          doctl serverless install
+          doctl serverless connect "${{ vars.DO_FUNCTIONS_NAMESPACE }}"
+          # build/ is generated and gitignored, so npm run deploy builds it
+          # first. No --remote-build: the remote builder only uploads
+          # project.yml, packages/ and lib/, so it could never see src/.
+          npm run deploy

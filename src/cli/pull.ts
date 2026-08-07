@@ -1,21 +1,17 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { config } from './config.ts';
-import { signIn } from './api/client.ts';
-import { airportsApi } from './api/airports.ts';
-import { queryAerodrome } from './osm/overpass.ts';
-import { transformAirport } from './airport/airport.transform.ts';
-import { assembleAirportFile, serializeAirportFile } from './airport/airport.file.ts';
-import type { GetAirportResponse } from './airport/airport.types.ts';
+import { loadDotEnv } from './env.ts';
+import { resolveConfig, resolveCredentials } from '../core/config.ts';
+import { consoleLogger, errorMessage } from '../core/logger.ts';
+import { connectAirportsApi } from '../core/api/airports.ts';
+import { pullAirport } from '../core/pull.ts';
+import { serializeAirportFile } from '../core/airport/airport.file.ts';
+import type { GetAirportResponse } from '../core/airport/airport.types.ts';
 
 const DATA_DIR = 'data';
 const OVERPASS_DELAY_MS = 1000;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function selectAirports(all: GetAirportResponse[], requested: string[]): GetAirportResponse[] {
@@ -34,13 +30,14 @@ function selectAirports(all: GetAirportResponse[], requested: string[]): GetAirp
 }
 
 async function main(): Promise<void> {
+  loadDotEnv();
   const requested = process.argv.slice(2).filter((arg) => !arg.startsWith('--'));
 
-  const token = await signIn(config.email, config.password);
-  const api = airportsApi(token);
+  const config = resolveConfig();
+  const api = await connectAirportsApi(config.api, resolveCredentials());
 
   const allAirports = await api.list();
-  console.log(`Fetched ${allAirports.length} airport(s) from ${config.apiBaseUrl}`);
+  console.log(`Fetched ${allAirports.length} airport(s) from ${config.api.baseUrl}`);
 
   const airports = selectAirports(allAirports, requested);
   console.log(`Pulling ${airports.length} airport(s) from OpenStreetMap into ${DATA_DIR}/\n`);
@@ -50,9 +47,11 @@ async function main(): Promise<void> {
   for (let i = 0; i < airports.length; i += 1) {
     const airport = airports[i];
     try {
-      const elements = await queryAerodrome(airport.icaoCode);
-      const desired = transformAirport(airport.icaoCode, elements);
-      const file = assembleAirportFile(airport.icaoCode, airport.name, airport.id, desired);
+      const file = await pullAirport(airport.icaoCode, config.overpass, {
+        name: airport.name,
+        airportId: airport.id,
+        logger: consoleLogger,
+      });
       const path = `${DATA_DIR}/${file.icaoCode}.json`;
       writeFileSync(path, `${serializeAirportFile(file)}\n`);
       console.log(
