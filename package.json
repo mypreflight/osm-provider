@@ -1,0 +1,16 @@
+{
+  "name": "airport-details",
+  "version": "1.0.0",
+  "description": "ELT tool that syncs OpenStreetMap airport data into the Flight Tracker API",
+  "type": "module",
+  "scripts": {
+    "pull:airports": "node src/pull-airports.ts",
+    "sync:airports": "node src/sync-airports.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "typescript": "^5.5.3"
+  },
+  "private": true
+}
