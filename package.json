@@ -2,6 +2,7 @@
   "name": "flight-tracker-airport-data-processor",
   "version": "1.0.0",
   "description": "ELT tool that syncs OpenStreetMap airport data into the Flight Tracker API",
+  "author": "oskarbarcz",
   "type": "module",
   "scripts": {
     "pull:airports": "node src/cli/pull.ts",
