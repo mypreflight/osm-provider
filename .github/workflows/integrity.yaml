@@ -2,44 +2,52 @@ name: 'integrity'
 
 on:
   pull_request:
-    paths: ['**', '!**.md']
 
 jobs:
   files:
-    runs-on: 'ubuntu-24.04'
+    runs-on: ubuntu-latest
     steps:
       - name: 'Checkout repository'
-        uses: 'actions/checkout@v6'
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: 'Check for CRLF line endings'
-        uses: 'gi-org-pl/check-crlf-action@v1'
+        uses: gi-org-pl/check-crlf-action@v1
       - name: 'Check for file permission changes'
-        uses: 'gi-org-pl/check-file-permissions-action@v1'
-      - name: 'Check app version is unique'
-        uses: 'gi-org-pl/check-version-action@v1'
+        uses: gi-org-pl/check-file-permissions-action@v1
+      - name: 'Check pull version is unique'
+        uses: gi-org-pl/check-version-action@v1
         with:
-          version: "$(jq -r '.version' package.json)"
+          version: "$(jq -r '.version' packages/airport/pull/package.json)"
   code:
-    runs-on: 'ubuntu-24.04'
-    environment: ci
+    runs-on: 'ubuntu-latest'
+    strategy:
+      fail-fast: false
+      matrix:
+        function: ['pull']
     steps:
       - name: 'Checkout repository'
-        uses: 'actions/checkout@v6'
-      - name: 'Set up Node'
-        uses: 'actions/setup-node@v4'
-        with:
-          node-version: '24'
-          cache: 'npm'
-      - name: 'Install dependencies'
-        run: 'npm ci'
-      - name: 'Run code formatting check'
-        run: 'npm run format'
+        uses: actions/checkout@v7
+      - name: 'Copy environment variables'
+        run: 'cp .env.dist .env'
+      - name: 'Run docker compose environment'
+        run: docker compose up -d --build --wait
       - name: 'Run static code analysis'
-        run: 'npm run lint'
+        run: docker compose exec ${{ matrix.function }} npm run lint
       - name: 'Run type check'
-        run: 'npm run typecheck'
+        run: docker compose exec ${{ matrix.function }} npm run typecheck
       - name: 'Run unit tests'
-        run: 'npm test'
-      - name: 'Build deployable functions'
-        run: 'npm run build:functions'
+        run: docker compose exec ${{ matrix.function }} npm test
+      - name: 'Run functional tests'
+        run: docker compose exec ${{ matrix.function }} npm run test:functional
+      - name: 'Build the function the way DigitalOcean does'
+        run: |
+          docker compose exec ${{ matrix.function }} sh -c '
+            rm -rf /tmp/slice && mkdir -p /tmp/slice
+            cp -r /app/packages/airport/${{ matrix.function }} /tmp/slice/${{ matrix.function }}
+            rm -rf /tmp/slice/${{ matrix.function }}/lib /tmp/slice/${{ matrix.function }}/node_modules
+            /tmp/slice/${{ matrix.function }}/build.sh
+            test -f /tmp/slice/${{ matrix.function }}/lib/function.js
+            test ! -e /tmp/slice/${{ matrix.function }}/node_modules/jest
+            test ! -e /tmp/slice/${{ matrix.function }}/node_modules/@biomejs
+          '

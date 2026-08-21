@@ -1,0 +1,34 @@
+# Component fragment for the `mypreflight` App Platform app.
+#
+# Merge both blocks into the app spec that already carries the flight-tracker-api
+# component. A functions component builds from this repository — App Platform reads
+# project.yml, so there is no image to publish and nothing to push to a registry.
+#
+#   doctl apps spec get <app-id> > app.yaml
+#   # merge the two blocks below into app.yaml
+#   doctl apps update <app-id> --spec app.yaml
+#
+# Keep the ingress rule ahead of the catch-all `/` rules already in the spec: App
+# Platform matches rules in order, so a `/` rule listed first would swallow the
+# function's path.
+
+functions:
+  - name: osm-provider
+    source_dir: /
+    github:
+      repo: mypreflight/osm-provider
+      branch: main
+      deploy_on_push: true
+    envs:
+      - key: OSM_FUNCTION_SECRET
+        scope: RUN_TIME
+        type: SECRET
+        value: 'set-this-to-the-generated-secret'
+
+ingress:
+  rules:
+    - component:
+        name: osm-provider
+      match:
+        path:
+          prefix: /osm

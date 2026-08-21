@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "files": {
+    "includes": [
+      "src/**/*",
+      "features/**/*",
+      "scripts/**/*",
+      "*.json",
+      "!**/lib",
+      "!**/node_modules",
+      "!package-lock.json"
+    ]
+  },
+  "vcs": {
+    "enabled": false,
+    "clientKind": "git",
+    "useIgnoreFile": false
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "lineWidth": 120
+  },
+  "linter": {
+    "rules": {
+      "preset": "recommended"
+    }
+  },
+  "json": {},
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "double"
+    }
+  }
+}

@@ -1,16 +1,8 @@
-# IDE
-/.idea
+.idea/
+node_modules/
 
-# Project
-/node_modules
-/build
-/coverage
-/data
-
-# doctl deployment bookkeeping
-/.deployed
-
-# Secrets
 .env
+test-data
 
-npm-debug.log*
+# build output — DigitalOcean compiles the function from packages/airport/pull/src
+packages/**/lib/
