@@ -1,0 +1,28 @@
+services:
+  pull:
+    build:
+      context: .
+      target: development
+    working_dir: /app/packages/airport/pull
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+      - ./node_modules:/app/packages/airport/pull/node_modules
+    ports:
+      - '3003:3000'
+    healthcheck:
+      test: 'curl --fail http://localhost:3000/health || exit 1'
+      interval: 500ms
+      retries: 3600
+      start_period: 3s
+      timeout: 500ms
+
+  overpass-mock:
+    image: mockserver/mockserver:mockserver-5.15.0
+    ports:
+      - '1181:1080'
+    volumes:
+      - ./docker/mock:/config
+    environment:
+      - MOCKSERVER_INITIALIZATION_JSON_PATH=/config/overpass.json

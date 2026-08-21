@@ -1,0 +1,6 @@
+#!/usr/bin/env sh
+
+# docker compose by default will sync non-existing node_modules directory on first run
+npm install
+
+npm run start:dev

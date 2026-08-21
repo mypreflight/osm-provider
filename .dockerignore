@@ -1,0 +1,24 @@
+# Installed inside the image (dev) or copied from the build stage (prod),
+# and bind-mounted over at runtime — never ship them in the context.
+node_modules
+packages/**/lib
+
+# Version control and CI
+.git
+.gitignore
+.github
+
+# Local runtime state and secrets
+.env
+.env.local
+test-data
+*.log
+
+# Editor and agent material
+.idea
+.claude
+
+# Docker's own inputs
+Dockerfile
+.dockerignore
+compose.yaml

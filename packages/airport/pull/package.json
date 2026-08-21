@@ -1,0 +1,53 @@
+{
+  "name": "osm-airport-pull",
+  "version": "0.2.0",
+  "description": "OpenStreetMap airport infrastructure, deployed as a DigitalOcean Function",
+  "author": "oskarbarcz",
+  "license": "Unlicense",
+  "main": "lib/function.js",
+  "scripts": {
+    "build": "./build.sh",
+    "start:dev": "TS_NODE_PROJECT=tsconfig.tests.json node --watch -r ts-node/register scripts/dev-server.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
+    "lint": "biome check",
+    "lint:fix": "biome check --write",
+    "test": "jest",
+    "test:functional": "TS_NODE_PROJECT=tsconfig.tests.json cucumber-js --require-module ts-node/register/transpile-only --require 'features/_context/**/*.ts' --fail-fast"
+  },
+  "dependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^5.7.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.3.0",
+    "@cucumber/cucumber": "^13.2.1",
+    "@types/jest": "^29.5.14",
+    "expect": "^29.7.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "ts-node": "^10.9.2"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "rootDir": ".",
+    "roots": [
+      "<rootDir>/src"
+    ],
+    "moduleFileExtensions": [
+      "ts",
+      "js",
+      "json"
+    ],
+    "testMatch": [
+      "**/*.spec.ts"
+    ],
+    "transform": {
+      "^.+\\.ts$": [
+        "ts-jest",
+        {
+          "tsconfig": "tsconfig.json"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,17 @@
+[
+  {
+    "httpRequest": {
+      "method": "POST",
+      "path": "/api/interpreter"
+    },
+    "httpResponse": {
+      "statusCode": 200,
+      "headers": {
+        "Content-Type": [
+          "application/json"
+        ]
+      },
+      "body": "{\"version\":0.6,\"generator\":\"mockserver\",\"elements\":[{\"type\":\"way\",\"id\":1,\"tags\":{\"aeroway\":\"aerodrome\",\"icao\":\"LIPZ\",\"iata\":\"VCE\",\"name\":\"Venezia Tessera\",\"name:en\":\"Venice Marco Polo\"},\"geometry\":[{\"lon\":12.33,\"lat\":45.498},{\"lon\":12.356,\"lat\":45.498},{\"lon\":12.356,\"lat\":45.512},{\"lon\":12.33,\"lat\":45.512},{\"lon\":12.33,\"lat\":45.498}]},{\"type\":\"way\",\"id\":2,\"tags\":{\"aeroway\":\"runway\",\"ref\":\"04R/22L\",\"length\":\"3300\",\"width\":\"45\",\"surface\":\"asphalt\",\"ele\":\"2\"},\"geometry\":[{\"lon\":12.3375,\"lat\":45.494},{\"lon\":12.354,\"lat\":45.509}]},{\"type\":\"way\",\"id\":3,\"tags\":{\"aeroway\":\"terminal\",\"ref\":\"T1\",\"name\":\"Terminal Passeggeri\",\"name:en\":\"Passenger Terminal\"},\"geometry\":[{\"lon\":12.348,\"lat\":45.504},{\"lon\":12.351,\"lat\":45.504},{\"lon\":12.351,\"lat\":45.5055},{\"lon\":12.348,\"lat\":45.5055},{\"lon\":12.348,\"lat\":45.504}]},{\"type\":\"node\",\"id\":11,\"lat\":45.5048,\"lon\":12.3476,\"tags\":{\"aeroway\":\"parking_position\",\"ref\":\"1\"}},{\"type\":\"node\",\"id\":12,\"lat\":45.5049,\"lon\":12.3479,\"tags\":{\"aeroway\":\"parking_position\",\"ref\":\"2\"}},{\"type\":\"node\",\"id\":13,\"lat\":45.505,\"lon\":12.3482,\"tags\":{\"aeroway\":\"parking_position\",\"ref\":\"3\"}},{\"type\":\"node\",\"id\":21,\"lat\":45.50472,\"lon\":12.34805,\"tags\":{\"aeroway\":\"gate\",\"ref\":\"1\"}},{\"type\":\"node\",\"id\":22,\"lat\":45.50482,\"lon\":12.34835,\"tags\":{\"aeroway\":\"gate\",\"ref\":\"2\"}}]}"
+    }
+  }
+]

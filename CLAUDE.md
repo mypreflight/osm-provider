@@ -1,123 +1,112 @@
 # Notes for Claude
 
-See `README.md` for what this tool is and how to use it. This file holds the
-constraints and rationale behind the structure — the things that are easy to
-break without noticing.
+See `README.md` for what this is and how to run it, and `docs/DEPLOYMENT.md` for the platform
+constraints behind the deployment layout. This file holds the rationale — the things that are easy
+to break without noticing.
 
-## The one architectural rule
+## Where the boundary is
 
-**`src/core/` must stay free of I/O and ambient state.** No `node:fs`, no
-`process.argv`, no reading `process.env` at import time. Config arrives as a
-parameter (`resolveConfig(env)`), progress is reported through the injected
-`Logger`.
+**This repository only reads.** It queries Overpass, transforms the result into the common format,
+and answers. It holds no Flight Tracker credentials, has no API client, and writes nothing.
 
-This is what lets one pipeline back both a terminal command and a serverless
-handler. Before the split, `config.ts` loaded `.env` as an import side effect and
-`overpass.ts` wrote to `console.warn` — both fine in a CLI, both wrong in a
-function. If you find yourself wanting `fs` in `core/`, the code belongs in
-`cli/` instead.
+The reconcile — diffing a pulled airport against what the platform already holds, and applying it —
+lives in `flight-tracker-api`, behind a new admin endpoint and review UI. The backend asks for an
+upgrade, keeps the answer in memory, a human reviews it, and the backend writes it. If you find
+yourself wanting an HTTP client for the Flight Tracker API here, or a `plan`/`apply` concept, the
+code belongs in the backend instead.
 
-`src/cli/` owns argv, files and console. `src/function/` owns HTTP shapes.
+That reconcile logic used to live here (`src/core/airport/airport.sync.ts`, with the CLI in
+`src/cli/`) and was removed when the flow moved to the backend. It is in the history at `eb3c13a` if
+the backend implementation needs it as a reference.
 
-## DigitalOcean Functions constraints
+## The layout is dictated by the platform
 
-Measured or confirmed from the docs, not guessed:
+Everything the function needs sits inside `packages/airport/pull/` — sources, `package.json`,
+`tsconfig.json`, `biome.json`, `build.sh`. There is deliberately **no root `package.json` and no
+shared `src/`**.
 
-- **Remote builds only upload `project.yml`, `packages/` and `lib/`** — they
-  would never see `src/`. So never pass `--remote-build`; the bundle is built
-  locally (and in CI). This is why `scripts/build-functions.ts` exists rather
-  than shipping the sources.
-- **The default timeout is 3 s.** Nowhere near enough, so `project.yml` sets it
-  explicitly: 5 min for `pull`, 10 min for `sync` (platform max is 15 min). An
-  EDDF pull measures ~12 s; applying EDDF is ~400 sequential API calls.
-- **Results are capped at 1 MB.** `http.ts` guards at 900 KB and returns `413`
-  rather than a truncated body. In practice there is plenty of headroom: EDDF
-  (789 boundary points, 276 stands, 110 gates) is ~175 KB compact, LIPZ ~45 KB.
-  The `include` parameter is the escape hatch. Input params are capped at 1 MB
-  too, which bounds how big a `file` payload `sync` can accept.
-- **No special `dist/` handling** — everything in the function directory is
-  zipped unless `.include` says otherwise. Each function has an `.include`
-  listing `index.js` only. You cannot use `.include` and `.ignore` together.
-- **`build.sh` must be executable** (`100755` in git, set via
-  `git add --chmod=+x`). A non-executable build script fails the deploy.
-- The root `package.json` has `"type": "module"`, which would make a bare
-  bundled `.js` load as ESM. The build writes a `{"type":"commonjs"}` marker
-  next to each bundle so local `require()` works; it is gitignored and excluded
-  from the deploy by `.include`.
-- **Node 24 is the ceiling, everywhere.** DigitalOcean Functions supports only
-  `nodejs:14`, `18`, `22` and `24` — there is no `nodejs:26`. Keep the toolchain
-  pinned to 24 too (`engines`, `@types/node`, CI `node-version`, and esbuild's
-  `target: node24`), so the bundle can never contain syntax the platform's Node
-  cannot parse. Do not bump any of these ahead of the platform.
-- **`${VAR}` in `project.yml` resolves from `process.env` first**, and only falls
-  back to a `.env` file if one is present. The docs are vague about this; the
-  deployer's `substituteFromEnvAndFiles` confirms the precedence. So CI passes
-  the values as step-level `env:` and never materialises a `.env` file. An
-  unresolvable symbol fails the deploy loudly rather than deploying a blank.
+This is not a style choice. App Platform always builds remotely, and a remote build only uploads
+`project.yml`, `packages/` and `lib/` — a shared root directory would never reach the builder. The
+sibling `aerolopa-provider` repository is laid out the same way, for the same reason; keep the two
+recognisably identical, because knowing one should mean knowing the other.
+
+A second function would be a second self-contained directory under `packages/`, carrying its own
+slim copy of whatever it shares. DigitalOcean packages each function directory on its own, so a
+shared module would have to be vendored into both slices anyway.
 
 ## Deliberate decisions — don't quietly undo these
 
-- **`airport/pull` gets no Flight Tracker credentials.** `project.yml` withholds
-  `FLIGHTS_*` from it on purpose, so a compromised read endpoint cannot write.
-  Do not add them to make something convenient.
-- **`airport/sync` returns `207` on a partial write.** Returning `200` when
-  `totals.failed > 0` would hide failures from the caller.
-- Auth on the endpoints is `webSecure` (`X-Require-Whisk-Auth`), enforced by the
-  platform before the handler runs — there is no auth code in the handlers.
-- Airports are never created, only enriched. OSM has no city/country/timezone/
-  continent.
-- **These deploy to a standalone Functions namespace, not as an App Platform
-  component.** This was chosen deliberately. App Platform *always* builds
-  remotely, and a remote build only uploads `project.yml`, `packages/` and
-  `lib/` — it would never see `src/`. Going that route would mean either moving
-  the shared core into `lib/` (letting the platform dictate the repo layout) or
-  committing build artifacts. The Flight Tracker API calls the function over
-  HTTP instead. Do not migrate this without being asked.
+- **Nothing is cached.** `aerolopa-provider` caches aggressively; this does not, on purpose. The
+  backend already holds the pulled airport in memory for its review flow, so a second cache here
+  would only serve an operator stale data right after they fixed something in OpenStreetMap.
+- **The retry budget must fit the function timeout.** `DEADLINE_MS` plus one `REQUEST_TIMEOUT_MS` has
+  to stay under the `timeout` in `project.yml`, or the platform kills the invocation mid-retry and
+  the caller gets an opaque platform error instead of the `502` this function would have sent.
+  `client.spec.ts` reads `project.yml` and asserts it — do not restate the number, and do not lower
+  the timeout without lowering the deadline.
+- **Airports are enriched, never created.** OpenStreetMap has no city, country, timezone or
+  continent, so an airport must already exist in the platform to be upgraded.
+- **Baselines are placeholders, not facts.** Fields the API requires and OSM cannot supply get
+  neutral `unknown`/`no`/`none`/`remote`/`other`/`0`/`[]` values, and `international` for a gate
+  category. Never replace one with a plausible-looking guess; `source` on every payload is a promise
+  about where the rest came from.
+- **Stands and gates stay separate.** An OSM `parking_position` is the apron stand; a `gate` is the
+  boarding door on the terminal wall. They have different coordinates and different fields, and
+  collapsing them loses real information.
+- **`413` rather than a truncated body.** The platform truncates an oversized result instead of
+  failing it, which would hand the caller half an airport that still parses as JSON.
+- **Auth is `webSecure` (`X-Require-Whisk-Auth`)**, enforced by the platform before the handler runs.
+  There is no auth code in the handler, and there should not be.
+- **Be sparing with Overpass.** It is a free public service with a usage policy. This is also why
+  the handler validates `icao` before spending a query, and why the local mock exists.
 
 ## Verifying a change
 
-`npm test` (Jest, specs in `tests/`) is the gate, alongside `npm run lint`
-(Biome) and `npm run typecheck`. CI runs all three. The suite builds the bundles
-in `globalSetup`, then asserts every invariant on this page — core purity, the
-deployment layout, explicit timeouts, `pull` having no credentials, `.env.dist`
-covering every `${VAR}` in `project.yml`, and the handlers' offline rejection
-paths. **Add a spec whenever you rely on a new invariant**, and confirm it
-actually fails when broken; a gate that cannot fail is worthless.
+Everything runs in Docker, in the `pull` service. All four are CI gates:
 
-Test config notes: specs are `tests/*.spec.ts` (matching the sibling
-`flight-tracker-api` repo), transformed by ts-jest via `tsconfig.spec.json`.
-That config uses `node16` resolution because `yaml` exposes its types only
-through an `exports` map, and `tests/package.json` pins the directory to
-CommonJS so ts-jest still gets CJS output. Do not delete that marker file.
-
-The suite is offline on purpose — CI has no credentials, and Overpass is a free
-public service. The network-dependent checks are manual:
-
-```bash
-npm run invoke:local -- pull icao=LIPZ        # no credentials needed
-npm run invoke:local -- sync icao=LIPZ        # dry run, read-only
-npm run sync:airports -- LIPZ                 # dry run, read-only
+```shell
+docker compose exec pull npm run lint
+docker compose exec pull npm run typecheck
+docker compose exec pull npm test
+docker compose exec pull npm run test:functional
 ```
 
-The strongest regression check on the pipeline is that a fresh pull of LIPZ
-serializes byte-identically to the committed `data/LIPZ.json`:
+Unit specs sit beside the code as `*.spec.ts` under `src/`. Functional specs are Cucumber features
+under `features/`, driving `src/function.ts` — the deployed entry point — against a mockserver
+standing in for Overpass. They cover the retry, the radius fallback for a node-only aerodrome, and
+every status code `openapi.json` promises.
 
-```bash
-node --input-type=module -e "
-import { pullAirport } from './src/core/pull.ts';
-import { resolveConfig } from './src/core/config.ts';
-import { serializeAirportFile } from './src/core/airport/airport.file.ts';
-import { readFileSync } from 'node:fs';
-const committed = JSON.parse(readFileSync('data/LIPZ.json','utf8'));
-const file = await pullAirport('LIPZ', resolveConfig().overpass, {
-  name: committed.name, airportId: committed.airportId });
-console.log(readFileSync('data/LIPZ.json','utf8').trim() === serializeAirportFile(file).trim()
-  ? 'IDENTICAL' : 'DIFFERS');
-"
+`integrity` also rebuilds the function the way DigitalOcean does, from a copy with `lib/` and
+`node_modules/` stripped, and asserts the dev dependencies stay out of the slice. Run the same thing
+locally when you touch `build.sh`, `package.json` or `tsconfig.json`:
+
+```shell
+docker compose exec pull sh -c '
+  rm -rf /tmp/slice && mkdir -p /tmp/slice
+  cp -r /app/packages/airport/pull /tmp/slice/pull
+  rm -rf /tmp/slice/pull/lib /tmp/slice/pull/node_modules
+  /tmp/slice/pull/build.sh && test -f /tmp/slice/pull/lib/function.js
+'
 ```
 
-Be sparing with Overpass — it is a free public service with a usage policy, and
-the CLI deliberately sleeps 1 s between airports.
+**Add a spec whenever you rely on a new invariant**, and confirm it actually fails when broken; a
+gate that cannot fail is worthless.
 
-`doctl` is not installed on this machine, so no deploy has ever been verified
-end to end from here.
+Two things the mock cannot tell you, so check them by hand against the real Overpass when the
+transform changes — set `OVERPASS_URL` to a real mirror in `.env`, pull one airport, and read the
+result:
+
+```shell
+curl -s "http://localhost:3003/?icao=LIPZ" | jq .
+```
+
+`doctl` is not installed on this machine, so no deploy has ever been verified end to end from here.
+
+## Cucumber fixtures
+
+Two things will waste your time otherwise:
+
+- The Overpass query reaches the mock **form-urlencoded**, so a mockserver body matcher has to use a
+  substring that survives it — `around.a:8000` arrives as `around.a%3A8000`.
+- Fixture coordinates are written out as literals rather than computed, because the features assert
+  them back verbatim and arithmetic on decimals does not round-trip through JSON.
