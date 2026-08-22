@@ -243,10 +243,24 @@ describe("terminals", () => {
 });
 
 describe("parking positions", () => {
-  it("requires a ref to be importable", () => {
+  it("requires a designator to be importable", () => {
     const result = transformAirport("EDDF", [
       node({ aeroway: "parking_position" }, 0.001, 0.001),
       node({ aeroway: "parking_position", ref: "A12" }, 0.002, 0.002),
+    ]);
+
+    expect(result.parkingPositions.map((position) => position.name)).toEqual(["A12"]);
+  });
+
+  it("takes the designator from the name when there is no ref", () => {
+    const result = transformAirport("EDDF", [node({ aeroway: "parking_position", name: "207" }, 0.002, 0.002)]);
+
+    expect(result.parkingPositions.map((position) => position.name)).toEqual(["207"]);
+  });
+
+  it("prefers the ref over the name", () => {
+    const result = transformAirport("EDDF", [
+      node({ aeroway: "parking_position", ref: "A12", name: "207" }, 0.002, 0.002),
     ]);
 
     expect(result.parkingPositions.map((position) => position.name)).toEqual(["A12"]);
@@ -319,6 +333,12 @@ describe("gate to parking position linking", () => {
     ]);
 
     expect(result.gates.map((gate) => gate.parkingPosition)).toEqual(["A12", "A12"]);
+  });
+
+  it("takes a gate designator from the name when there is no ref", () => {
+    const result = transformAirport("EDDF", [node({ aeroway: "gate", name: "B7" }, 0, 0)]);
+
+    expect(result.gates.map((gate) => gate.name)).toEqual(["B7"]);
   });
 
   it("defaults the gate category to international", () => {

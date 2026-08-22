@@ -327,9 +327,8 @@ function elementPoint(element: OsmElement): Coordinates | undefined {
   return undefined;
 }
 
-/** Without a `ref` there is nothing to match a stand or gate on, so it is unusable. */
 function namedPoint(element: OsmElement): { name: string; coordinates: Coordinates } | undefined {
-  const ref = (element.tags?.ref ?? "").trim();
+  const ref = (element.tags?.ref ?? element.tags?.name ?? "").trim();
 
   if (!ref) {
     return undefined;
