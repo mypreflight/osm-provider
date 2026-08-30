@@ -17,6 +17,7 @@ import type {
   Coordinates,
   SurfaceType,
 } from "../types";
+import { deriveTerminalShortName, shortenAirportName, uniqueShortName } from "./names";
 
 /** Carries the geometry the terminal assignment needs, alongside the record. */
 export interface TransformedTerminal {
@@ -232,49 +233,6 @@ function buildRunways(element: OsmElement): AirportRunway[] {
   });
 }
 
-function compactName(name: string): string {
-  const compact = name
-    .split(/\s+/)
-    .map((token) => token.replace(/[^A-Za-z0-9]/g, ""))
-    .filter(Boolean)
-    .map((token) => (/\d/.test(token) ? token : token[0]))
-    .join("");
-
-  return compact.toUpperCase().slice(0, 8) || "T";
-}
-
-function deriveShortName(ref: string, name: string): string {
-  if (ref) {
-    const code = ref
-      .split(/[;,/]/)[0]
-      .replace(/[^A-Za-z0-9]/g, "")
-      .toUpperCase()
-      .slice(0, 8);
-
-    if (code) {
-      return code;
-    }
-  }
-
-  return compactName(name);
-}
-
-function uniqueShortName(base: string, taken: Set<string>): string {
-  if (!taken.has(base)) {
-    return base;
-  }
-
-  for (let suffix = 2; suffix < 100; suffix++) {
-    const candidate = base.slice(0, 8 - String(suffix).length) + suffix;
-
-    if (!taken.has(candidate)) {
-      return candidate;
-    }
-  }
-
-  return base;
-}
-
 function buildTerminal(element: OsmElement): TransformedTerminal | undefined {
   const tags = element.tags ?? {};
   const name = englishName(tags);
@@ -292,7 +250,7 @@ function buildTerminal(element: OsmElement): TransformedTerminal | undefined {
   }
 
   const terminal: AirportTerminal = {
-    shortName: deriveShortName(ref, name),
+    shortName: deriveTerminalShortName(ref, name),
     fullName: name || ref,
     averageTaxiTime: 0,
     operatorCodes: [],
@@ -434,7 +392,7 @@ export function transformAirport(icaoCode: string, elements: OsmElement[]): Tran
   const aerodrome = selectAerodrome(elements);
 
   if (aerodrome) {
-    result.name = englishName(aerodrome.tags ?? {}) || null;
+    result.name = shortenAirportName(englishName(aerodrome.tags ?? {})) || null;
 
     const ring = elementRing(aerodrome);
 

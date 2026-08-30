@@ -188,10 +188,24 @@ describe("terminals", () => {
     expect(result.terminals[0].terminal.shortName).toBe("NSB");
   });
 
-  it("keeps digits intact when abbreviating", () => {
-    const result = transformAirport("EDDF", [way({ aeroway: "terminal", name: "Terminal 2" }, footprint)]);
+  it("shortens a numbered terminal to its designator", () => {
+    const result = transformAirport("EDDF", [way({ aeroway: "terminal", ref: "2", name: "Terminal 2" }, footprint)]);
 
     expect(result.terminals[0].terminal.shortName).toBe("T2");
+    expect(result.terminals[0].terminal.fullName).toBe("Terminal 2");
+  });
+
+  it("shortens a lettered terminal to the letter alone", () => {
+    const result = transformAirport("EDDF", [way({ aeroway: "terminal", name: "Terminal A" }, footprint)]);
+
+    expect(result.terminals[0].terminal.shortName).toBe("A");
+    expect(result.terminals[0].terminal.fullName).toBe("Terminal A");
+  });
+
+  it("falls back to initials for a designator it does not recognise", () => {
+    const result = transformAirport("EDDF", [way({ aeroway: "terminal", name: "Terminal 1A" }, footprint)]);
+
+    expect(result.terminals[0].terminal.shortName).toBe("T1A");
   });
 
   it("disambiguates a duplicate short name by appending a counter", () => {
@@ -350,9 +364,9 @@ describe("gate to parking position linking", () => {
 
 describe("aerodrome name", () => {
   it("reports the name OpenStreetMap gives the aerodrome", () => {
-    const result = transformAirport("EDDF", [way({ aeroway: "aerodrome", name: "Frankfurt Airport" }, AERODROME_RING)]);
+    const result = transformAirport("EDDF", [way({ aeroway: "aerodrome", name: "Venice Marco Polo" }, AERODROME_RING)]);
 
-    expect(result.name).toBe("Frankfurt Airport");
+    expect(result.name).toBe("Venice Marco Polo");
   });
 
   it("prefers the English name over the local one", () => {
@@ -360,7 +374,21 @@ describe("aerodrome name", () => {
       way({ aeroway: "aerodrome", name: "Flughafen Frankfurt", "name:en": "Frankfurt Airport" }, AERODROME_RING),
     ]);
 
-    expect(result.name).toBe("Frankfurt Airport");
+    expect(result.name).toBe("Frankfurt");
+  });
+
+  it("drops a trailing Airport", () => {
+    const result = transformAirport("EDDF", [way({ aeroway: "aerodrome", name: "Frankfurt Airport" }, AERODROME_RING)]);
+
+    expect(result.name).toBe("Frankfurt");
+  });
+
+  it("shortens a trailing International Airport to Intl", () => {
+    const result = transformAirport("EDDF", [
+      way({ aeroway: "aerodrome", name: "Vienna International Airport" }, AERODROME_RING),
+    ]);
+
+    expect(result.name).toBe("Vienna Intl");
   });
 
   it("is null when the aerodrome carries no usable name", () => {

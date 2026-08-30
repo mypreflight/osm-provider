@@ -112,7 +112,6 @@ export type Section = (typeof SECTIONS)[number];
 
 export interface AirportData {
   icaoCode: string;
-  /** As OpenStreetMap names the aerodrome; null when it carries no usable name. */
   name: string | null;
   source: string;
   location?: Coordinates;

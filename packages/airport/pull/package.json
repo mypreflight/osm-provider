@@ -1,6 +1,6 @@
 {
   "name": "osm-airport-pull",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "OpenStreetMap airport infrastructure, deployed as a DigitalOcean Function",
   "author": "oskarbarcz",
   "license": "Unlicense",
