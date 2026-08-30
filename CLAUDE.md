@@ -50,6 +50,12 @@ shared module would have to be vendored into both slices anyway.
   neutral `unknown`/`no`/`none`/`remote`/`other`/`0`/`[]` values, and `international` for a gate
   category. Never replace one with a plausible-looking guess; `source` on every payload is a promise
   about where the rest came from.
+- **Names are shortened by rule, not by lookup.** `src/transform/names.ts` drops a trailing
+  "Airport" from the aerodrome name, turns "International Airport" into "Intl", and shortens a
+  "Terminal 1"/"Terminal A" to `T1`/`A`. A name the rules do not recognise falls through untouched,
+  to `ref` and then to initials — deliberately, because a table of nicer names for particular
+  airports would make `source` a lie about where the name came from. The designator in the name wins
+  over `ref`, because a mapper who tags both usually writes `ref=1` beside `name=Terminal 1`.
 - **Stands and gates stay separate.** An OSM `parking_position` is the apron stand; a `gate` is the
   boarding door on the terminal wall. They have different coordinates and different fields, and
   collapsing them loses real information.

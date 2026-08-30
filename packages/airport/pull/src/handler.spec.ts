@@ -117,7 +117,7 @@ describe("the airport payload", () => {
 
     expect(airport).toMatchObject({
       icaoCode: "EDDF",
-      name: "Frankfurt Airport",
+      name: "Frankfurt",
       source: "OpenStreetMap via Overpass",
     });
     expect(airport.runways.map((runway) => runway.designator)).toEqual(["09", "27"]);

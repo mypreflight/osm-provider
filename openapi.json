@@ -341,7 +341,7 @@
         "properties": {
           "shortName": {
             "type": "string",
-            "description": "From the OSM `ref`, else initials of the name. At most 8 characters, unique within the airport.",
+            "description": "From a `Terminal 1` / `Terminal A` name (`T1`, `A`), else the OSM `ref`, else initials of the name. At most 8 characters, unique within the airport.",
             "examples": [
               "T1"
             ]
@@ -591,7 +591,7 @@
               "string",
               "null"
             ],
-            "description": "As OpenStreetMap names the aerodrome; null when it carries no usable name."
+            "description": "As OpenStreetMap names the aerodrome, shortened for a display column: a trailing `Airport` is dropped and `International Airport` becomes `Intl`. Null when the aerodrome carries no usable name."
           },
           "source": {
             "type": "string",

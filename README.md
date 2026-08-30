@@ -155,8 +155,14 @@ OpenStreetMap cannot supply get neutral *"not specified"* baselines — `unknown
 `[]`, and `international` for a gate category. They are placeholders for the operator to review, never facts this
 service is claiming. `source` on every payload says where the rest came from.
 
-Two things worth knowing when reading a payload:
+Three things worth knowing when reading a payload:
 
+- **Names are shortened, never rewritten.** OpenStreetMap names things for a map, the platform shows them in a column
+  a few characters wide, so a trailing *"Airport"* comes off the aerodrome name and *"International Airport"* becomes
+  *"Intl"* — "Vienna International Airport" is reported as "Vienna Intl". A terminal named "Terminal 1" or
+  "Terminal A" gets the short name `T1` or `A`; anything more elaborate falls back to the OSM `ref`, then to the
+  initials of the name. The rules only drop and abbreviate what OpenStreetMap already wrote, and a terminal's
+  `fullName` keeps it whole.
 - **Stands and gates are different objects.** An OSM `aeroway=parking_position` is the stand as ATC and crews use it,
   carrying the operational fields and its apron coordinates. An `aeroway=gate` is what passengers see, carrying a
   category and the coordinates of the boarding door on the terminal wall. A gate links to the same-named stand when
