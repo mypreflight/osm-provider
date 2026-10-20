@@ -4,6 +4,17 @@ See `README.md` for what this is and how to run it, and `docs/DEPLOYMENT.md` for
 constraints behind the deployment layout. This file holds the rationale — the things that are easy
 to break without noticing.
 
+## MyPreflight knowledge base
+
+This repo is part of MyPreflight. Product decisions, standards and architecture live in the knowledge base. Read it by URL before working here:
+
+- Start: https://raw.githubusercontent.com/mypreflight/product/main/CLAUDE.md
+- Standards: https://raw.githubusercontent.com/mypreflight/product/main/technology/backend/standards.md
+- Architecture: https://raw.githubusercontent.com/mypreflight/product/main/technology/backend/architecture.md
+- Data sources: https://raw.githubusercontent.com/mypreflight/product/main/product/data-sources.md
+
+Anything shared between repos belongs in the knowledge base; this file keeps what is specific to this repo. When your change alters product behaviour, also open a PR to the knowledge base updating the matching file.
+
 ## Where the boundary is
 
 **This repository only reads.** It queries Overpass, transforms the result into the common format,
