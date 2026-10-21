@@ -1,6 +1,6 @@
 <div align="center">
 
-# osm-provider
+[![osm-provider][banner]][homepage]
 
 The airport infrastructure function of the [**MyPreflight**][homepage] platform. Read one airport's
 boundary, runways, terminals, stands and gates from [OpenStreetMap][osm], on demand, as a component
@@ -237,6 +237,7 @@ attribution.
 [github-url]: https://github.com/oskarbarcz
 [web-badge]: https://img.shields.io/badge/barcz.me-4A5568?style=for-the-badge&logo=googlechrome&logoColor=white
 [web-url]: https://barcz.me
+[banner]: .github/image/banner.png
 [homepage]: https://mypreflight.io
 [osm]: https://www.openstreetmap.org
 [odbl]: https://opendatacommons.org/licenses/odbl/
