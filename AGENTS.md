@@ -1,8 +1,21 @@
-# Notes for Claude
+# Notes for coding agents
 
 See `README.md` for what this is and how to run it, and `docs/DEPLOYMENT.md` for the platform
 constraints behind the deployment layout. This file holds the rationale — the things that are easy
 to break without noticing.
+
+## MyPreflight knowledge base
+
+This repo is part of MyPreflight. The knowledge base lives in the product repo, [mypreflight/product](https://github.com/mypreflight/product). It is the primary source of truth for product decisions, standards and architecture. Read it by URL before working here:
+
+- Start: https://raw.githubusercontent.com/mypreflight/product/main/CLAUDE.md
+- Standards: https://raw.githubusercontent.com/mypreflight/product/main/technology/backend/standards.md
+- Architecture: https://raw.githubusercontent.com/mypreflight/product/main/technology/backend/architecture.md
+- Data sources: https://raw.githubusercontent.com/mypreflight/product/main/product/data-sources.md
+
+If this file or the code contradicts the knowledge base, the knowledge base takes precedence. Flag the conflict; don't silently change either side.
+
+Anything shared between repos belongs in the knowledge base; this file keeps what is specific to this repo. When your change alters product behaviour, also open a PR to the knowledge base updating the matching file.
 
 ## Where the boundary is
 
