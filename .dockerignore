@@ -1,6 +1,6 @@
 # Installed inside the image (dev) or copied from the build stage (prod),
 # and bind-mounted over at runtime — never ship them in the context.
-node_modules
+**/node_modules
 packages/**/lib
 packages/**/dist
 
@@ -26,3 +26,5 @@ compose.yaml
 
 # Infrastructure as code
 infra
+dist.zip
+lambda-out

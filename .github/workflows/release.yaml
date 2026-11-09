@@ -32,34 +32,21 @@ jobs:
     permissions:
       contents: read
       id-token: write
+      pull-requests: write
     steps:
       - name: 'Checkout repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: 'Set up Node.js'
-        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: '24'
-      - name: 'Bundle the function'
-        working-directory: 'packages/airport/pull'
-        run: 'npm ci --no-audit --no-fund && npm run bundle'
+      - name: 'Build function for release'
+        run: './zip.sh'
       - name: 'Configure AWS credentials'
         uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
         with:
           role-to-assume: ${{ vars.AWS_ROLE_ARN }}
           aws-region: ${{ vars.AWS_REGION }}
-      - name: 'Set up OpenTofu'
-        uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
-        with:
-          tofu_version_file: 'infra/.opentofu-version'
-          tofu_wrapper: false
-      - name: 'Initialize OpenTofu'
-        run: 'tofu -chdir=infra init -input=false'
-      - name: 'Plan infrastructure changes'
-        run: 'tofu -chdir=infra plan -input=false -lock-timeout=10m -out=tfplan'
-      - name: 'Report the plan'
-        continue-on-error: true
-        uses: gi-org-pl/report-tofu-plan-action@3e9723344bbd1c09659e14bf34be192d8db84213 # v1.0.1
-        with:
-          working-directory: 'infra'
       - name: 'Apply infrastructure changes'
-        run: 'tofu -chdir=infra apply -input=false -lock-timeout=10m tfplan'
+        uses: dflook/tofu-apply@1de081df5087fb9ba2acf4866e9bc9b95f79676c # v3.1.2
+        with:
+          path: 'infra'
+          auto_approve: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

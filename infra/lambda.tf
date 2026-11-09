@@ -14,8 +14,8 @@ resource "aws_lambda_function" "function" {
   runtime          = "nodejs24.x"
   architectures    = ["arm64"]
   handler          = "lambda.handler"
-  filename         = data.archive_file.bundle.output_path
-  source_code_hash = filebase64sha256(local.bundle_path)
+  filename         = "${path.module}/../dist.zip"
+  source_code_hash = filebase64sha256("${path.module}/../dist.zip")
   memory_size      = 512
   timeout          = 300
 
