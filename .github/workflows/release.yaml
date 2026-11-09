@@ -3,13 +3,14 @@ name: 'release'
 on:
   push:
     branches: ['main']
-
-permissions:
-  contents: write
+  workflow_dispatch:
 
 jobs:
   tag:
+    if: github.event_name == 'push'
     runs-on: 'ubuntu-latest'
+    permissions:
+      contents: write
     steps:
       - name: 'Clone repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -19,3 +20,33 @@ jobs:
         run: "gh release create $(jq -r '.version' packages/airport/pull/package.json) --generate-notes"
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  deploy:
+    needs: 'tag'
+    if: github.ref == 'refs/heads/main' && !failure() && !cancelled()
+    runs-on: 'ubuntu-latest'
+    environment: 'production'
+    timeout-minutes: 30
+    concurrency:
+      group: 'infra-production'
+      cancel-in-progress: false
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: 'Build function for release'
+        run: './zip.sh'
+      - name: 'Configure AWS credentials'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: 'Apply infrastructure changes'
+        uses: dflook/tofu-apply@1de081df5087fb9ba2acf4866e9bc9b95f79676c # v3.1.2
+        with:
+          path: 'infra'
+          auto_approve: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

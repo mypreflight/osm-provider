@@ -51,3 +51,27 @@ jobs:
             test ! -e /tmp/slice/${{ matrix.function }}/node_modules/jest
             test ! -e /tmp/slice/${{ matrix.function }}/node_modules/@biomejs
           '
+  infra:
+    if: github.actor != 'dependabot[bot]'
+    runs-on: 'ubuntu-latest'
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      pull-requests: write
+    steps:
+      - name: 'Checkout repository'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: 'Build function for release'
+        run: './zip.sh'
+      - name: 'Configure AWS credentials'
+        uses: aws-actions/configure-aws-credentials@e1253824e5c10ff9df46874f81ed3ec929e19cfd # v6.3.0
+        with:
+          role-to-assume: ${{ vars.AWS_PLAN_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION }}
+      - name: 'Init & plan infrastructure changes'
+        uses: dflook/tofu-plan@53b5b01b6eef56cd678401dbe92a0f6ca6b863ff # v3.1.2
+        with:
+          path: 'infra'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
