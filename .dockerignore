@@ -2,6 +2,7 @@
 # and bind-mounted over at runtime — never ship them in the context.
 node_modules
 packages/**/lib
+packages/**/dist
 
 # Version control and CI
 .git
@@ -22,3 +23,6 @@ test-data
 Dockerfile
 .dockerignore
 compose.yaml
+
+# Infrastructure as code
+infra

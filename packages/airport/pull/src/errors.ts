@@ -13,6 +13,24 @@ export class BadRequestError extends ProviderError {
   readonly code = "BAD_REQUEST";
 }
 
+export class UnauthorizedError extends ProviderError {
+  readonly status = 401;
+  readonly code = "UNAUTHORIZED";
+
+  constructor() {
+    super("The X-Require-Whisk-Auth header is missing or wrong.");
+  }
+}
+
+export class RouteNotFoundError extends ProviderError {
+  readonly status = 404;
+  readonly code = "NOT_FOUND";
+
+  constructor(path: string, served: string) {
+    super(`Nothing is served at ${path}. Expected ${served}.`);
+  }
+}
+
 export class MethodNotAllowedError extends ProviderError {
   readonly status = 405;
   readonly code = "METHOD_NOT_ALLOWED";

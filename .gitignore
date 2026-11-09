@@ -6,3 +6,12 @@ test-data
 
 # build output — DigitalOcean compiles the function from packages/airport/pull/src
 packages/**/lib/
+packages/**/dist/
+
+# Infrastructure
+.terraform/
+*.tfstate
+*.tfstate.*
+*_override.tf
+tfplan
+infra/build/
