@@ -7,7 +7,7 @@ multi-ecosystem-groups:
 
 updates:
   - package-ecosystem: npm
-    directory: /packages/airport/pull
+    directory: /
     patterns: ['*']
     multi-ecosystem-group: dependencies
   - package-ecosystem: github-actions

@@ -15,16 +15,12 @@ jobs:
         uses: gi-org-pl/check-crlf-action@464995c09f1659cd4b0f7e2bf7234994f0fd705e # v1.0.2
       - name: 'Check for file permission changes'
         uses: gi-org-pl/check-file-permissions-action@1cec1b07fa817da3da98bd2da20992365d6b4da6 # v1.0.0
-      - name: 'Check pull version is unique'
+      - name: 'Check version is unique'
         uses: gi-org-pl/check-version-action@c884d1e92d3eef7b26d6277d49f18d0803009d73 # v1.0.0
         with:
-          version: "$(jq -r '.version' packages/airport/pull/package.json)"
+          version: "$(jq -r '.version' package.json)"
   code:
     runs-on: 'ubuntu-latest'
-    strategy:
-      fail-fast: false
-      matrix:
-        function: ['pull']
     steps:
       - name: 'Checkout repository'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -33,24 +29,13 @@ jobs:
       - name: 'Run docker compose environment'
         run: docker compose up -d --build --wait
       - name: 'Run static code analysis'
-        run: docker compose exec ${{ matrix.function }} npm run lint
+        run: docker compose exec app npm run lint
       - name: 'Run type check'
-        run: docker compose exec ${{ matrix.function }} npm run typecheck
+        run: docker compose exec app npm run typecheck
       - name: 'Run unit tests'
-        run: docker compose exec ${{ matrix.function }} npm test
+        run: docker compose exec app npm test
       - name: 'Run functional tests'
-        run: docker compose exec ${{ matrix.function }} npm run test:functional
-      - name: 'Build the function the way DigitalOcean does'
-        run: |
-          docker compose exec ${{ matrix.function }} sh -c '
-            rm -rf /tmp/slice && mkdir -p /tmp/slice
-            cp -r /app/packages/airport/${{ matrix.function }} /tmp/slice/${{ matrix.function }}
-            rm -rf /tmp/slice/${{ matrix.function }}/lib /tmp/slice/${{ matrix.function }}/node_modules
-            /tmp/slice/${{ matrix.function }}/build.sh
-            test -f /tmp/slice/${{ matrix.function }}/lib/function.js
-            test ! -e /tmp/slice/${{ matrix.function }}/node_modules/jest
-            test ! -e /tmp/slice/${{ matrix.function }}/node_modules/@biomejs
-          '
+        run: docker compose exec app npm run test:functional
   infra:
     if: github.actor != 'dependabot[bot]'
     runs-on: 'ubuntu-latest'

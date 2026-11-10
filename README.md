@@ -3,8 +3,8 @@
 [![osm-provider][banner]][homepage]
 
 The airport infrastructure function of the [**MyPreflight**][homepage] platform. Read one airport's
-boundary, runways, terminals, stands and gates from [OpenStreetMap][osm], on demand, as a component
-of the platform's App Platform app.
+boundary, runways, terminals, stands and gates from [OpenStreetMap][osm], on demand, as an AWS Lambda
+function.
 
 </div>
 
@@ -45,8 +45,8 @@ companion in [flight-tracker-transponder-app][repo-transponder], and the seat ma
 [![Cucumber][cucumber-badge]][cucumber-url]
 [![Docker][docker-badge]][docker-url]
 
-No runtime dependencies at all — the function is the standard library plus compiled TypeScript, which keeps the
-deployed artifact small and the cold start immediate.
+No runtime dependencies at all — the function is the standard library plus TypeScript bundled into one file, which
+keeps the deployed artifact small and the cold start immediate.
 
 ## Getting started
 
@@ -76,11 +76,11 @@ This app uses docker-based virtualization to run. To set up the project, follow 
    Packages will be installed automatically and the service starts in watch mode.
 
 4. Your project should be up and running. `docker compose` also starts an `overpass-mock` container, so the function
-   answers without touching the real Overpass API:
+   answers without touching the real Overpass API. `$SECRET` is `OSM_FUNCTION_SECRET` from your `.env`:
 
    ```shell
-   curl "http://localhost:3003/?icao=LIPZ"
-   curl "http://localhost:3003/?icao=LIPZ&include=runways"
+   curl -H "Authorization: Bearer $SECRET" "http://localhost:3003/pull?icao=LIPZ"
+   curl -H "Authorization: Bearer $SECRET" "http://localhost:3003/pull?icao=LIPZ&include=runways"
    ```
 
    The mock answers every query with one small synthetic airport (`docker/mock/overpass.json`), whatever ICAO code you
@@ -89,39 +89,39 @@ This app uses docker-based virtualization to run. To set up the project, follow 
 
 ### On-demand by design
 
-This is a functions component of the `mypreflight` App Platform app — the same app the backend runs in, deployed from
-this repository rather than as a separate serverless project. It scales to zero, costs nothing while nobody is
-upgrading an airport, and starts on the first request, which fits an operation a human triggers a few times a month.
+This is an AWS Lambda function behind a Function URL, deployed from this repository by the OpenTofu stack in `infra/`.
+It scales to zero, costs nothing while nobody is upgrading an airport, and starts on the first request, which fits an
+operation a human triggers a few times a month.
 
 ```shell
-curl -H "X-Require-Whisk-Auth: $SECRET" \
-  "https://<app-host>/osm/airport/pull?icao=EDDF"
+curl -H "Authorization: Bearer $SECRET" \
+  "$URL/pull?icao=EDDF"
 ```
 
-Functions reach the network through the app's public ingress and cannot be placed on a private one — they support
-neither VPCs nor App Platform internal routing. The endpoint is therefore guarded by a shared secret, declared as
-`webSecure` in `project.yml`. Nothing internal is exposed: the function reads a public database and returns an
-airport.
+`$URL` and `$SECRET` are the SSM parameters `/mypreflight/osm-provider/url` and `/mypreflight/osm-provider/secret`.
+The Function URL is public — its auth type is `NONE` — so the function guards itself: the shared secret travels as a
+bearer token and is compared in constant time before anything else runs. Nothing internal is exposed: the function
+reads a public database and returns an airport.
 
-The function is a self-contained package under `packages/airport/`, with its own `package.json`, build and
-dependencies. `src/function.ts` is the entry point DigitalOcean calls, and `scripts/dev-server.ts` beside it wraps
-that entry point in a throwaway HTTP server so `docker compose up` gives you something to curl; it is never deployed.
+The function is one package at the repository root. `src/lambda.ts` is the entry point Lambda calls, and
+`scripts/dev-server.ts` wraps that entry point in a throwaway HTTP server so `docker compose up` gives you something to
+curl; it is never deployed.
 
 ### API documentation
 
-The contract is `openapi.json` in the repository root — `GET /airport/pull`, requiring the `X-Require-Whisk-Auth`
-header. It is the source of truth: `flight-tracker-api` generates its client types from it rather than restating them.
+The contract is `openapi.json` in the repository root — `GET /pull`, requiring an `Authorization: Bearer` header. It
+is the source of truth: `flight-tracker-api` generates its client types from it rather than restating them.
 
-The function takes arguments, not paths — as query parameters over HTTP, or as the `args` object when invoked through
-the DigitalOcean API. `POST` behaves identically and accepts them as a JSON body.
+The function takes its arguments as query parameters. `POST` behaves identically.
 
 | Arguments                             | Result                                                     |
 | ------------------------------------- | ---------------------------------------------------------- |
 | `icao=EDDF`                           | the whole airport                                          |
 | `icao=EDDF&include=runways,terminals` | only those sections, plus the airport's identity           |
 
-`include` accepts any of `location`, `shape`, `runways`, `terminals`, `parkingPositions`, `gates`. It exists because a
-function result is capped at 1 MB: Frankfurt is around 175 kB and Venice around 45 kB, so there is plenty of headroom
+`include` accepts any of `location`, `shape`, `runways`, `terminals`, `parkingPositions`, `gates`. It exists because the
+function refuses an answer over 5 MB — Lambda will not return a Function URL response over 6 MB, and the body travels
+inside it as an escaped JSON string. Frankfurt is around 175 kB and Venice around 45 kB, so there is plenty of headroom
 in practice, but the escape hatch is there for the airport that has not been surveyed yet.
 
 ```json
@@ -140,9 +140,10 @@ in practice, but the escape hatch is there for the airport that has not been sur
 }
 ```
 
-Errors answer `{ "error": { "code", "message", "status" } }` with a matching status: `400` bad arguments, `404` no
-aerodrome in OpenStreetMap under that ICAO code, `405` a method other than GET or POST, `413` an airport that would not
-fit in a function result, `502` Overpass unreachable, `500` anything else.
+Errors answer `{ "error": { "code", "message", "status" } }` with a matching status: `400` bad arguments, `401` a
+missing or wrong bearer token, `404` no aerodrome in OpenStreetMap under that ICAO code (or a path other than `/pull`),
+`405` a method other than GET or POST, `413` an airport over the 5 MB cap, `502` Overpass unreachable, `500` anything
+else.
 
 ### What OpenStreetMap can and cannot say
 
@@ -177,36 +178,33 @@ Three things worth knowing when reading a payload:
 
 This project uses [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
-The version lives in `packages/airport/pull/package.json`. `integrity` fails the build if it is one that has been
-released before, and the release workflow tags whatever it says:
+The version lives in `package.json`. `integrity` fails the build if it is one that has been released before, and the
+release workflow tags whatever it says:
 
 ```shell
-npm version 1.1.0 --no-git-tag-version --prefix packages/airport/pull
+docker compose exec app npm version 2.1.0 --no-git-tag-version
 ```
 
 This project has configured continuous integration and continuous deployment pipelines. It uses GitHub Actions to
-automatically build, test and deploy the app to the DigitalOcean. You can find the configuration in `.github/workflows`
-directory.
+automatically build, test and deploy the app to AWS. You can find the configuration in `.github/workflows` directory.
 
-First deployment needs the component adding to the app spec and a shared secret — see the
-[deployment guide][docs-deployment].
+A pull request runs the checks and plans the OpenTofu stack in `infra/`, commenting the plan. Merging to `main` tags the
+version, creates the GitHub release, builds `dist.zip` with `./zip.sh` and applies the stack. What the stack holds and
+how to check a deployment is in the [deployment guide][docs-deployment].
 
-App Platform rebuilds the component whenever `main` moves, so the workflow here only tags the version and drafts the
-GitHub release. There is no image and no registry: App Platform builds from this repository using `project.yml`.
-
-Everything runs in Docker, in the service named after the function:
+Everything runs in Docker, in the `app` service:
 
 ```shell
-docker compose exec pull npm test              # unit specs, beside the code
-docker compose exec pull npm run test:functional   # cucumber, against the mock Overpass
-docker compose exec pull npm run typecheck
-docker compose exec pull npm run lint
-docker compose exec pull npm run build         # exactly what DigitalOcean runs
+docker compose exec app npm test              # unit specs, beside the code
+docker compose exec app npm run test:functional   # cucumber, against the mock Overpass
+docker compose exec app npm run typecheck
+docker compose exec app npm run lint
+./zip.sh                                      # the release bundle, built in Docker into dist.zip
 ```
 
-The functional suite drives `src/function.ts` — the deployed entry point — against a mock Overpass, so it covers the
-retry, the radius fallback for a node-only aerodrome, and every status code the contract promises. It leaves the
-`docker compose` fixtures as it found them, so you can keep curling afterwards.
+The functional suite drives `src/lambda.ts` — the deployed entry point — against a mock Overpass, so it covers the
+bearer check, the retry, the radius fallback for a node-only aerodrome, and every status code the contract promises.
+It leaves the `docker compose` fixtures as it found them, so you can keep curling afterwards.
 
 ## Contact
 

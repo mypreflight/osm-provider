@@ -11,14 +11,9 @@ import { assembleAirportData, isEmpty } from "./transform/airport.data";
 import { transformAirport } from "./transform/airport.transform";
 import { type AirportData, SECTIONS, type Section } from "./types";
 
-/**
- * DigitalOcean web functions merge the query string and a JSON body into one
- * `args` object, alongside the `__ow_*` request metadata.
- */
-export type HandlerParams = {
-  icao?: unknown;
-  include?: unknown;
-  __ow_method?: string;
+export type HandlerRequest = {
+  method: string;
+  query: Record<string, string | undefined>;
 };
 
 export type HandlerResponse = {
@@ -26,8 +21,7 @@ export type HandlerResponse = {
   body: unknown;
 };
 
-/** A function result is capped at 1 MB by the platform; keep headroom. */
-export const MAX_RESULT_BYTES = 900_000;
+export const MAX_RESULT_BYTES = 5_000_000;
 
 const ALLOWED_METHODS = ["get", "post"];
 
@@ -35,18 +29,16 @@ const ICAO_PATTERN = /^[A-Z]{4}$/;
 
 const logger = new Logger("PullHandler");
 
-function requireMethod(params: HandlerParams): void {
-  const used = (params.__ow_method ?? "get").toLowerCase();
+function requireMethod(method: string): void {
+  const used = method.toLowerCase();
 
   if (!ALLOWED_METHODS.includes(used)) {
     throw new MethodNotAllowedError(used, ALLOWED_METHODS);
   }
 }
 
-function requireIcao(params: HandlerParams): string {
-  const raw = params.icao;
-
-  if (typeof raw !== "string" || raw.trim() === "") {
+function requireIcao(raw: string | undefined): string {
+  if (raw === undefined || raw.trim() === "") {
     throw new BadRequestError("Parameter icao is required, for example icao=EDDF.");
   }
 
@@ -60,15 +52,14 @@ function requireIcao(params: HandlerParams): string {
 }
 
 /** Absent means every section; the parameter only ever narrows the response. */
-function parseSections(params: HandlerParams): Section[] | undefined {
-  const raw = params.include;
-
-  if (raw === undefined || raw === null || raw === "") {
+function parseSections(raw: string | undefined): Section[] | undefined {
+  if (raw === undefined || raw === "") {
     return undefined;
   }
 
-  const requested = (Array.isArray(raw) ? raw : String(raw).split(","))
-    .map((entry) => String(entry).trim())
+  const requested = raw
+    .split(",")
+    .map((entry) => entry.trim())
     .filter(Boolean);
 
   if (requested.length === 0) {
@@ -103,10 +94,6 @@ export function project(data: AirportData, sections: Section[]): Partial<Airport
   return projected;
 }
 
-/**
- * The platform truncates an oversized result instead of failing it, so measure
- * before answering rather than handing the caller half an airport.
- */
 export function guardResultSize(body: unknown): void {
   const bytes = Buffer.byteLength(JSON.stringify(body) ?? "", "utf8");
 
@@ -119,16 +106,16 @@ function describeRequest(icao: string, sections: Section[] | undefined): string 
   return `icao=${icao}${sections ? ` include=${sections.join(",")}` : ""}`;
 }
 
-export async function handleRequest(client: OverpassClient, params: HandlerParams): Promise<HandlerResponse> {
+export async function handleRequest(client: OverpassClient, request: HandlerRequest): Promise<HandlerResponse> {
   const startedAt = Date.now();
-  let request = "unparsed";
+  let described = "unparsed";
 
   try {
-    requireMethod(params);
+    requireMethod(request.method);
 
-    const icao = requireIcao(params);
-    const sections = parseSections(params);
-    request = describeRequest(icao, sections);
+    const icao = requireIcao(request.query.icao);
+    const sections = parseSections(request.query.include);
+    described = describeRequest(icao, sections);
 
     const data = assembleAirportData(transformAirport(icao, await client.queryAerodrome(icao)));
 
@@ -140,7 +127,7 @@ export async function handleRequest(client: OverpassClient, params: HandlerParam
     guardResultSize(body);
 
     logger.log(
-      `Served ${request} in ${Date.now() - startedAt}ms: ${data.runways.length} runways, ` +
+      `Served ${described} in ${Date.now() - startedAt}ms: ${data.runways.length} runways, ` +
         `${data.terminals.length} terminals, ${data.parkingPositions.length} parking positions, ${data.gates.length} gates.`,
     );
 
@@ -148,7 +135,7 @@ export async function handleRequest(client: OverpassClient, params: HandlerParam
   } catch (error) {
     if (error instanceof ProviderError) {
       logger.warn(
-        `Request ${request} failed after ${Date.now() - startedAt}ms with ${error.status} ${error.code}: ${error.message}`,
+        `Request ${described} failed after ${Date.now() - startedAt}ms with ${error.status} ${error.code}: ${error.message}`,
       );
 
       return {
@@ -164,7 +151,7 @@ export async function handleRequest(client: OverpassClient, params: HandlerParam
     }
 
     logger.error(
-      `Request ${request} crashed after ${Date.now() - startedAt}ms: ${describeError(error)}`,
+      `Request ${described} crashed after ${Date.now() - startedAt}ms: ${describeError(error)}`,
       stackOf(error),
     );
 

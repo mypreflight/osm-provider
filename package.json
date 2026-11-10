@@ -1,12 +1,11 @@
 {
-  "name": "osm-airport-pull",
-  "version": "1.1.1",
-  "description": "OpenStreetMap airport infrastructure, deployed as a DigitalOcean Function",
+  "name": "osm-provider",
+  "version": "2.0.0",
+  "private": true,
+  "description": "OpenStreetMap airport infrastructure, served from an AWS Lambda Function URL",
   "author": "oskarbarcz",
   "license": "Unlicense",
-  "main": "lib/function.js",
   "scripts": {
-    "build": "./build.sh",
     "bundle": "esbuild src/lambda.ts --bundle --platform=node --target=node24 --format=cjs --keep-names --outfile=dist/lambda.js",
     "start:dev": "TS_NODE_PROJECT=tsconfig.tests.json node --watch -r ts-node/register scripts/dev-server.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.tests.json --noEmit",
@@ -15,19 +14,17 @@
     "test": "jest",
     "test:functional": "TS_NODE_PROJECT=tsconfig.tests.json cucumber-js --require-module ts-node/register/transpile-only --require 'features/_context/**/*.ts' --fail-fast"
   },
-  "dependencies": {
-    "@types/node": "^24.0.0",
-    "typescript": "^5.7.2"
-  },
   "devDependencies": {
     "@biomejs/biome": "^2.3.0",
     "@cucumber/cucumber": "^13.2.1",
     "@types/jest": "^30.0.0",
+    "@types/node": "^24.0.0",
     "esbuild": "^0.28.2",
     "expect": "^30.5.2",
     "jest": "^30.5.2",
     "ts-jest": "^29.4.15",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
   },
   "jest": {
     "testEnvironment": "node",

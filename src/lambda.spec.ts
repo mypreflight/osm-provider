@@ -1,9 +1,9 @@
-import { main } from "./function";
+import { handleRequest } from "./handler";
 import { type FunctionUrlEvent, handler } from "./lambda";
 
-jest.mock("./function", () => ({ main: jest.fn() }));
+jest.mock("./handler", () => ({ handleRequest: jest.fn() }));
 
-const mainMock = jest.mocked(main);
+const handleRequestMock = jest.mocked(handleRequest);
 
 const SECRET = "0123456789abcdef0123456789abcdef";
 
@@ -12,7 +12,7 @@ const AIRPORT_BODY = { airport: { icaoCode: "EDDF", name: "Frankfurt", source: "
 function event(overrides: Partial<FunctionUrlEvent> = {}): FunctionUrlEvent {
   return {
     rawPath: "/pull",
-    headers: { "x-require-whisk-auth": SECRET },
+    headers: { authorization: `Bearer ${SECRET}` },
     queryStringParameters: { icao: "EDDF" },
     requestContext: { http: { method: "GET" } },
     ...overrides,
@@ -24,12 +24,8 @@ let originalSecret: string | undefined;
 beforeEach(() => {
   originalSecret = process.env.OSM_FUNCTION_SECRET;
   process.env.OSM_FUNCTION_SECRET = SECRET;
-  mainMock.mockReset();
-  mainMock.mockResolvedValue({
-    statusCode: 200,
-    headers: { "Content-Type": "application/json" },
-    body: AIRPORT_BODY,
-  });
+  handleRequestMock.mockReset();
+  handleRequestMock.mockResolvedValue({ statusCode: 200, body: AIRPORT_BODY });
 });
 
 afterEach(() => {
@@ -40,54 +36,63 @@ afterEach(() => {
   }
 });
 
-describe("the shared secret", () => {
+describe("the bearer secret", () => {
   it("lets a request with the right secret through", async () => {
     const response = await handler(event());
 
     expect(response.statusCode).toBe(200);
-    expect(mainMock).toHaveBeenCalledTimes(1);
+    expect(handleRequestMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("accepts the scheme in any case", async () => {
+    const response = await handler(event({ headers: { authorization: `bearer ${SECRET}` } }));
+
+    expect(response.statusCode).toBe(200);
   });
 
   it.each([
     ["missing", {}],
-    ["empty", { "x-require-whisk-auth": "" }],
-    ["wrong but the same length", { "x-require-whisk-auth": "f".repeat(SECRET.length) }],
-    ["a prefix of the secret", { "x-require-whisk-auth": SECRET.slice(0, 8) }],
-    ["longer than the secret", { "x-require-whisk-auth": `${SECRET}0` }],
+    ["empty", { authorization: "" }],
+    ["the bare secret, without the scheme", { authorization: SECRET }],
+    ["a different scheme", { authorization: `Basic ${SECRET}` }],
+    ["the scheme alone", { authorization: "Bearer " }],
+    ["wrong but the same length", { authorization: `Bearer ${"f".repeat(SECRET.length)}` }],
+    ["a prefix of the secret", { authorization: `Bearer ${SECRET.slice(0, 8)}` }],
+    ["longer than the secret", { authorization: `Bearer ${SECRET}0` }],
   ])("answers 401 when the header is %s", async (_label, headers) => {
     const response = await handler(event({ headers }));
 
     expect(response.statusCode).toBe(401);
-    expect(response.headers).toEqual({ "Content-Type": "application/json" });
+    expect(response.headers).toEqual({ "Content-Type": "application/json", "WWW-Authenticate": "Bearer" });
     expect(JSON.parse(response.body)).toEqual({
-      error: { code: "UNAUTHORIZED", message: expect.any(String), status: 401 },
+      error: { code: "UNAUTHORIZED", message: "The Authorization header is missing or wrong.", status: 401 },
     });
-    expect(mainMock).not.toHaveBeenCalled();
+    expect(handleRequestMock).not.toHaveBeenCalled();
   });
 
   it("answers 401 when the event carries no headers at all", async () => {
     const response = await handler(event({ headers: undefined }));
 
     expect(response.statusCode).toBe(401);
-    expect(mainMock).not.toHaveBeenCalled();
+    expect(handleRequestMock).not.toHaveBeenCalled();
   });
 
-  it("refuses every request when the secret is empty, even one sending an empty header", async () => {
+  it("refuses every request when the secret is empty, even one sending an empty token", async () => {
     process.env.OSM_FUNCTION_SECRET = "";
 
-    const response = await handler(event({ headers: { "x-require-whisk-auth": "" } }));
+    const response = await handler(event({ headers: { authorization: "Bearer " } }));
 
     expect(response.statusCode).toBe(401);
-    expect(mainMock).not.toHaveBeenCalled();
+    expect(handleRequestMock).not.toHaveBeenCalled();
   });
 
   it("refuses every request when the secret is unset", async () => {
     delete process.env.OSM_FUNCTION_SECRET;
 
-    const response = await handler(event({ headers: { "x-require-whisk-auth": "undefined" } }));
+    const response = await handler(event({ headers: { authorization: "Bearer undefined" } }));
 
     expect(response.statusCode).toBe(401);
-    expect(mainMock).not.toHaveBeenCalled();
+    expect(handleRequestMock).not.toHaveBeenCalled();
   });
 
   it("checks the secret before the path, so an unauthorised caller learns nothing about routes", async () => {
@@ -106,38 +111,44 @@ describe("routing", () => {
     expect(JSON.parse(response.body)).toEqual({
       error: { code: "NOT_FOUND", message: expect.stringContaining(rawPath), status: 404 },
     });
-    expect(mainMock).not.toHaveBeenCalled();
+    expect(handleRequestMock).not.toHaveBeenCalled();
   });
 });
 
-describe("forwarding to the function", () => {
-  it("passes the query parameters and the lowercased method", async () => {
+describe("forwarding to the handler", () => {
+  it("passes the method and the query parameters", async () => {
     await handler(event({ queryStringParameters: { icao: "LIPZ", include: "runways,gates" } }));
 
-    expect(mainMock).toHaveBeenCalledWith({ icao: "LIPZ", include: "runways,gates", __ow_method: "get" });
+    expect(handleRequestMock).toHaveBeenCalledWith(expect.anything(), {
+      method: "GET",
+      query: { icao: "LIPZ", include: "runways,gates" },
+    });
   });
 
-  it.each(["POST", "DELETE"])("forwards %s for the function to judge", async (method) => {
+  it.each(["POST", "DELETE"])("forwards %s for the handler to judge", async (method) => {
     await handler(event({ requestContext: { http: { method } } }));
 
-    expect(mainMock).toHaveBeenCalledWith({ icao: "EDDF", __ow_method: method.toLowerCase() });
+    expect(handleRequestMock).toHaveBeenCalledWith(expect.anything(), { method, query: { icao: "EDDF" } });
   });
 
   it("copes with a request that has no query string", async () => {
     await handler(event({ queryStringParameters: undefined }));
 
-    expect(mainMock).toHaveBeenCalledWith({ __ow_method: "get" });
+    expect(handleRequestMock).toHaveBeenCalledWith(expect.anything(), { method: "GET", query: {} });
   });
 
-  it("never lets the query string override the real method", async () => {
-    await handler(event({ queryStringParameters: { icao: "EDDF", __ow_method: "delete" } }));
+  it("takes the method from the request, never from the query string", async () => {
+    await handler(event({ queryStringParameters: { icao: "EDDF", method: "DELETE" } }));
 
-    expect(mainMock).toHaveBeenCalledWith({ icao: "EDDF", __ow_method: "get" });
+    expect(handleRequestMock).toHaveBeenCalledWith(expect.anything(), {
+      method: "GET",
+      query: { icao: "EDDF", method: "DELETE" },
+    });
   });
 });
 
 describe("the response", () => {
-  it("keeps the function's status and headers and serialises an object body", async () => {
+  it("keeps the handler's status and serialises its body as JSON", async () => {
     const response = await handler(event());
 
     expect(response).toEqual({
@@ -147,25 +158,13 @@ describe("the response", () => {
     });
   });
 
-  it("serialises an error body the function answers with", async () => {
+  it("serialises an error body the handler answers with", async () => {
     const body = { error: { code: "AERODROME_NOT_FOUND", message: "none", status: 404 } };
-    mainMock.mockResolvedValue({ statusCode: 404, headers: { "Content-Type": "application/json" }, body });
+    handleRequestMock.mockResolvedValue({ statusCode: 404, body });
 
     const response = await handler(event());
 
     expect(response.statusCode).toBe(404);
     expect(JSON.parse(response.body)).toEqual(body);
-  });
-
-  it("passes a body that is already a string through untouched", async () => {
-    mainMock.mockResolvedValue({
-      statusCode: 200,
-      headers: { "Content-Type": "application/json" },
-      body: '{"ok":true}',
-    });
-
-    const response = await handler(event());
-
-    expect(response.body).toBe('{"ok":true}');
   });
 });

@@ -1,16 +1,27 @@
 import { Then, When } from "@cucumber/cucumber";
 import expect from "expect";
-import { main } from "../../src/function";
+import { type FunctionUrlEvent, handler, PULL_PATH } from "../../src/lambda";
 import { deepCompare } from "../_helper/deep-compare";
 
 let statusCode: number;
 let body: unknown;
 
-async function invoke(params: Record<string, string>): Promise<void> {
-  const result = await main(params);
+async function invoke(
+  query: Record<string, string>,
+  method = "GET",
+  authorization: string | null = `Bearer ${process.env.OSM_FUNCTION_SECRET}`,
+): Promise<void> {
+  const event: FunctionUrlEvent = {
+    rawPath: PULL_PATH,
+    headers: authorization === null ? {} : { authorization },
+    queryStringParameters: query,
+    requestContext: { http: { method } },
+  };
+
+  const result = await handler(event);
 
   statusCode = result.statusCode;
-  body = result.body;
+  body = JSON.parse(result.body);
 }
 
 When("I request the airport {string}", async (icao: string) => {
@@ -22,7 +33,15 @@ When("I request the airport {string} including {string}", async (icao: string, i
 });
 
 When("I request the airport {string} with the method {string}", async (icao: string, method: string) => {
-  await invoke({ icao, __ow_method: method });
+  await invoke({ icao }, method.toUpperCase());
+});
+
+When("I request the airport {string} without the function secret", async (icao: string) => {
+  await invoke({ icao }, "GET", null);
+});
+
+When("I request the airport {string} with the bearer token {string}", async (icao: string, token: string) => {
+  await invoke({ icao }, "GET", `Bearer ${token}`);
 });
 
 When("I request no airport at all", async () => {

@@ -49,3 +49,23 @@ Feature: Rejecting a request before it costs an Overpass query
       }
       """
     And Overpass should have been queried 0 times
+
+  Scenario: A request without the function secret
+    When I request the airport "LIPZ" without the function secret
+    Then the response status should be 401
+    And the response body should contain:
+      """
+      {
+        "error": {
+          "code": "UNAUTHORIZED",
+          "message": "The Authorization header is missing or wrong.",
+          "status": 401
+        }
+      }
+      """
+    And Overpass should have been queried 0 times
+
+  Scenario: A request with the wrong function secret
+    When I request the airport "LIPZ" with the bearer token "not-the-secret"
+    Then the response status should be 401
+    And Overpass should have been queried 0 times

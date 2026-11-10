@@ -17,9 +17,9 @@ const BACKOFF_MS = 1000;
 /**
  * Wall-clock budget for the whole lookup, mirrors and retries included. It has
  * to leave room for one more full request under the function's `timeout` in
- * project.yml, otherwise the platform kills the invocation mid-retry and the
- * caller gets an opaque platform error instead of a 502 it can act on.
- * `client.spec.ts` asserts that against project.yml.
+ * infra/lambda.tf, otherwise Lambda kills the invocation mid-retry and the
+ * caller gets an opaque error instead of a 502 it can act on.
+ * `client.spec.ts` asserts that against infra/lambda.tf.
  */
 export const DEADLINE_MS = 210_000;
 
