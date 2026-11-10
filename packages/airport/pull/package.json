@@ -1,6 +1,6 @@
 {
   "name": "osm-airport-pull",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "OpenStreetMap airport infrastructure, deployed as a DigitalOcean Function",
   "author": "oskarbarcz",
   "license": "Unlicense",
@@ -53,7 +53,8 @@
     }
   },
   "overrides": {
-    "minimatch": "^11.0.4"
+    "minimatch": "^11.0.4",
+    "glob@>=9.0.0 <14.0.2": "^14.0.4"
   },
   "allowScripts": {
     "@parcel/watcher": false,
