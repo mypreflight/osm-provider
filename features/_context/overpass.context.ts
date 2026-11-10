@@ -1,6 +1,6 @@
 import { AfterAll, Before, Given, Then } from "@cucumber/cucumber";
 import expect from "expect";
-import { resetClient } from "../../src/function";
+import { resetClient } from "../../src/lambda";
 import { callsTo, queries, reset, restoreFixtures, expect as stub } from "../_helper/mockserver";
 import {
   aerodrome,

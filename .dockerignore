@@ -1,8 +1,7 @@
 # Installed inside the image (dev) or copied from the build stage (prod),
 # and bind-mounted over at runtime — never ship them in the context.
 **/node_modules
-packages/**/lib
-packages/**/dist
+dist
 
 # Version control and CI
 .git

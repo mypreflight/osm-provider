@@ -18,7 +18,7 @@ export class UnauthorizedError extends ProviderError {
   readonly code = "UNAUTHORIZED";
 
   constructor() {
-    super("The X-Require-Whisk-Auth header is missing or wrong.");
+    super("The Authorization header is missing or wrong.");
   }
 }
 
@@ -58,11 +58,6 @@ export class OverpassUnavailableError extends ProviderError {
   }
 }
 
-/**
- * The platform truncates a result over 1 MB rather than failing it, which would
- * hand the caller a body that parses as JSON but is missing records. Refusing is
- * the safer answer, and `include` is the way back under the cap.
- */
 export class ResultTooLargeError extends ProviderError {
   readonly status = 413;
   readonly code = "RESULT_TOO_LARGE";

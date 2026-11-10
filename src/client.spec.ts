@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { areaQuery, aroundQuery, DEFAULT_OVERPASS_URLS, TIMING } from "./client";
 
-const PROJECT_YML = join(__dirname, "..", "..", "..", "..", "project.yml");
+const LAMBDA_TF = join(__dirname, "..", "infra", "lambda.tf");
 
 describe("areaQuery", () => {
   const query = areaQuery("EDDF");
@@ -54,18 +54,18 @@ describe("mirrors", () => {
 
 describe("the retry budget", () => {
   /**
-   * The whole point of the deadline: the platform kills the invocation at the
-   * `timeout` in project.yml, and a retry loop that outlives it hands the caller
-   * an opaque platform error instead of the 502 this function would have sent.
+   * The whole point of the deadline: Lambda kills the invocation at the
+   * `timeout` in infra/lambda.tf, and a retry loop that outlives it hands the caller
+   * an opaque error instead of the 502 this function would have sent.
    * Lowering that timeout without lowering the deadline breaks the guarantee, so
    * read it from the deployment descriptor rather than restating it here.
    */
-  const timeouts = [...readFileSync(PROJECT_YML, "utf-8").matchAll(/^\s*timeout:\s*(\d+)\s*$/gm)].map((match) =>
-    Number(match[1]),
+  const timeouts = [...readFileSync(LAMBDA_TF, "utf-8").matchAll(/^\s*timeout\s*=\s*(\d+)\s*$/gm)].map(
+    (match) => Number(match[1]) * 1000,
   );
 
-  it("finds an explicit timeout in project.yml to measure against", () => {
-    // The platform default is 3s, so an absent timeout is a deployment bug.
+  it("finds an explicit timeout in infra/lambda.tf to measure against", () => {
+    // The Lambda default is 3s, so an absent timeout is a deployment bug.
     expect(timeouts.length).toBeGreaterThan(0);
   });
 

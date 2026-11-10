@@ -4,9 +4,7 @@ node_modules/
 .env
 test-data
 
-# build output — DigitalOcean compiles the function from packages/airport/pull/src
-packages/**/lib/
-packages/**/dist/
+/dist/
 
 # Infrastructure
 .terraform/

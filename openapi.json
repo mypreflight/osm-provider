@@ -2,8 +2,8 @@
   "openapi": "3.1.0",
   "info": {
     "title": "MyPreflight OpenStreetMap provider",
-    "description": "A DigitalOcean Function returning one airport's infrastructure \u2014 boundary, runways, terminals, parking positions and gates \u2014 read from OpenStreetMap through the Overpass API and transformed into the platform's common airport format.\n\nRead-only by design: the function holds no Flight Tracker credentials and writes nothing. The backend keeps the answer in memory, an operator reviews it, and only then does the backend write it into the airport model.\n\nDeployed as a functions component of the `mypreflight` App Platform app. Every request must carry the `X-Require-Whisk-Auth` header declared as `webSecure` in project.yml; the platform rejects the request before the function runs otherwise.",
-    "version": "1.0.0",
+    "description": "An AWS Lambda function returning one airport's infrastructure \u2014 boundary, runways, terminals, parking positions and gates \u2014 read from OpenStreetMap through the Overpass API and transformed into the platform's common airport format.\n\nRead-only by design: the function holds no Flight Tracker credentials and writes nothing. The backend keeps the answer in memory, an operator reviews it, and only then does the backend write it into the airport model.\n\nServed from a Lambda Function URL. Every request must carry the function secret as a bearer token in the `Authorization` header; the function refuses the request with `401` before doing anything else otherwise.",
+    "version": "2.0.0",
     "license": {
       "name": "Unlicense",
       "url": "https://opensource.org/licenses/Unlicense"
@@ -11,8 +11,13 @@
   },
   "servers": [
     {
-      "url": "https://<app-host>/osm",
-      "description": "App Platform ingress route"
+      "url": "https://{urlId}.lambda-url.eu-central-1.on.aws",
+      "description": "The Lambda Function URL, published at the SSM parameter /mypreflight/osm-provider/url",
+      "variables": {
+        "urlId": {
+          "default": "function-url-id"
+        }
+      }
     },
     {
       "url": "http://localhost:3003",
@@ -20,10 +25,10 @@
     }
   ],
   "paths": {
-    "/airport/pull": {
+    "/pull": {
       "get": {
         "summary": "Pull one airport's infrastructure from OpenStreetMap",
-        "description": "Queries Overpass for everything tagged `aeroway` inside the aerodrome whose `icao` tag matches, then transforms it into the common format: runways split per landing direction, stands and gates assigned to their nearest terminal, and each gate linked to the stand it boards onto.\n\nAn aerodrome mapped as a bare node encloses no area, so the client falls back to searching a 8 km radius around it. Nothing is cached \u2014 the backend holds the answer for its review flow, and a second cache here would only serve an operator stale data after they fixed something in OpenStreetMap.\n\n`POST` behaves identically; the platform merges a JSON body into the same arguments.",
+        "description": "Queries Overpass for everything tagged `aeroway` inside the aerodrome whose `icao` tag matches, then transforms it into the common format: runways split per landing direction, stands and gates assigned to their nearest terminal, and each gate linked to the stand it boards onto.\n\nAn aerodrome mapped as a bare node encloses no area, so the client falls back to searching a 8 km radius around it. Nothing is cached \u2014 the backend holds the answer for its review flow, and a second cache here would only serve an operator stale data after they fixed something in OpenStreetMap.\n\n`POST` behaves identically, with the same query parameters.",
         "operationId": "pullAirport",
         "parameters": [
           {
@@ -43,7 +48,7 @@
             "name": "include",
             "in": "query",
             "required": false,
-            "description": "Comma-separated sections to narrow the response to, for staying under the 1 MB result cap on a large hub. The identity fields (`icaoCode`, `name`, `source`) always travel.",
+            "description": "Comma-separated sections to narrow the response to, for staying under the 5 MB result cap on a large hub. The identity fields (`icaoCode`, `name`, `source`) always travel.",
             "schema": {
               "type": "array",
               "items": {
@@ -88,7 +93,14 @@
             }
           },
           "401": {
-            "description": "Missing or wrong X-Require-Whisk-Auth header; rejected by the platform"
+            "description": "Missing or wrong bearer token in the `Authorization` header, answered by the function with `UNAUTHORIZED`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
           },
           "404": {
             "description": "OpenStreetMap has no aerodrome tagged with that ICAO code",
@@ -111,7 +123,7 @@
             }
           },
           "413": {
-            "description": "The airport would not fit in a function result; narrow it with `include`",
+            "description": "The airport would not fit under the 5 MB result cap; narrow it with `include`",
             "content": {
               "application/json": {
                 "schema": {
@@ -144,44 +156,49 @@
       },
       "post": {
         "summary": "Pull one airport's infrastructure from OpenStreetMap",
-        "description": "Identical to `GET`; the arguments may arrive as a JSON body instead of a query string.",
+        "description": "Identical to `GET`, with the same query parameters.",
         "operationId": "pullAirportPost",
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "required": [
-                  "icao"
-                ],
-                "properties": {
-                  "icao": {
-                    "type": "string",
-                    "pattern": "^[A-Za-z]{4}$",
-                    "examples": [
-                      "EDDF"
-                    ]
-                  },
-                  "include": {
-                    "type": "array",
-                    "items": {
-                      "type": "string",
-                      "enum": [
-                        "location",
-                        "shape",
-                        "runways",
-                        "terminals",
-                        "parkingPositions",
-                        "gates"
-                      ]
-                    }
-                  }
-                }
-              }
+        "parameters": [
+          {
+            "name": "icao",
+            "in": "query",
+            "required": true,
+            "description": "Four-letter ICAO code, matched against the aerodrome's `icao` tag. Case-insensitive.",
+            "schema": {
+              "type": "string",
+              "pattern": "^[A-Za-z]{4}$",
+              "examples": [
+                "EDDF"
+              ]
+            }
+          },
+          {
+            "name": "include",
+            "in": "query",
+            "required": false,
+            "description": "Comma-separated sections to narrow the response to, for staying under the 5 MB result cap on a large hub. The identity fields (`icaoCode`, `name`, `source`) always travel.",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "location",
+                  "shape",
+                  "runways",
+                  "terminals",
+                  "parkingPositions",
+                  "gates"
+                ]
+              },
+              "examples": [
+                [
+                  "runways",
+                  "terminals"
+                ]
+              ]
             }
           }
-        },
+        ],
         "responses": {
           "200": {
             "description": "The airport, in the common format",
@@ -195,6 +212,66 @@
           },
           "400": {
             "description": "Missing or malformed `icao`, or an unknown `include` section",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Missing or wrong bearer token in the `Authorization` header, answered by the function with `UNAUTHORIZED`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "OpenStreetMap has no aerodrome tagged with that ICAO code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "405": {
+            "description": "A method other than GET or POST",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The airport would not fit under the 5 MB result cap; narrow it with `include`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Unexpected failure",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "Every Overpass mirror is unreachable or answering unusably",
             "content": {
               "application/json": {
                 "schema": {
@@ -227,6 +304,7 @@
                 "type": "string",
                 "enum": [
                   "BAD_REQUEST",
+                  "UNAUTHORIZED",
                   "METHOD_NOT_ALLOWED",
                   "AERODROME_NOT_FOUND",
                   "OVERPASS_UNAVAILABLE",
@@ -660,16 +738,16 @@
       }
     },
     "securitySchemes": {
-      "whiskAuth": {
-        "type": "apiKey",
-        "in": "header",
-        "name": "X-Require-Whisk-Auth"
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "The function secret, exported at the SSM parameter /mypreflight/osm-provider/secret."
       }
     }
   },
   "security": [
     {
-      "whiskAuth": []
+      "bearerAuth": []
     }
   ]
 }

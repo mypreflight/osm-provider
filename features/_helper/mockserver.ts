@@ -68,7 +68,7 @@ export async function queries(path = OVERPASS_PATH): Promise<string[]> {
 export async function restoreFixtures(): Promise<void> {
   const { readFileSync } = await import("node:fs");
   const { join } = await import("node:path");
-  const file = join(__dirname, "..", "..", "..", "..", "..", "docker", "mock", "overpass.json");
+  const file = join(__dirname, "..", "..", "docker", "mock", "overpass.json");
   const expectations = JSON.parse(readFileSync(file, "utf-8")) as unknown[];
 
   await reset();

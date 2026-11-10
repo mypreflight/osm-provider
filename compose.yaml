@@ -1,14 +1,13 @@
 services:
-  pull:
+  app:
     build:
       context: .
       target: development
-    working_dir: /app/packages/airport/pull
+    working_dir: /app
     env_file:
       - .env
     volumes:
       - .:/app
-      - ./node_modules:/app/packages/airport/pull/node_modules
     ports:
       - '3003:3000'
     healthcheck:

@@ -1,6 +1,6 @@
 import type { OverpassClient } from "./client";
 import { OverpassUnavailableError } from "./errors";
-import { guardResultSize, handleRequest, MAX_RESULT_BYTES, project } from "./handler";
+import { guardResultSize, type HandlerRequest, handleRequest, MAX_RESULT_BYTES, project } from "./handler";
 import type { OsmElement, OsmTags } from "./osm.types";
 import type { AirportData } from "./types";
 
@@ -52,13 +52,17 @@ function clientThrowing(error: unknown): OverpassClient {
   } as unknown as OverpassClient;
 }
 
+function get(query: Record<string, string | undefined>): HandlerRequest {
+  return { method: "GET", query };
+}
+
 beforeEach(() => {
   nextId = 1;
 });
 
 describe("icao validation", () => {
   it("accepts a four-letter code, in any case, padded", async () => {
-    const response = await handleRequest(clientReturning(AIRPORT), { icao: "  eddf " });
+    const response = await handleRequest(clientReturning(AIRPORT), get({ icao: "  eddf " }));
 
     expect(response.statusCode).toBe(200);
     expect((response.body as { airport: AirportData }).airport.icaoCode).toBe("EDDF");
@@ -71,9 +75,8 @@ describe("icao validation", () => {
     ["too short", { icao: "ED" }],
     ["too long", { icao: "EDDFX" }],
     ["containing digits", { icao: "ED1F" }],
-    ["not a string", { icao: 1234 }],
-  ])("answers 400 when icao is %s", async (_label, params) => {
-    const response = await handleRequest(clientReturning(AIRPORT), params);
+  ])("answers 400 when icao is %s", async (_label, query) => {
+    const response = await handleRequest(clientReturning(AIRPORT), get(query));
 
     expect(response.statusCode).toBe(400);
     expect(response.body).toMatchObject({ error: { code: "BAD_REQUEST", status: 400 } });
@@ -89,21 +92,21 @@ describe("icao validation", () => {
       },
     } as unknown as OverpassClient;
 
-    await handleRequest(client, { icao: "n0pe" });
+    await handleRequest(client, get({ icao: "n0pe" }));
 
     expect(calls).toBe(0);
   });
 });
 
 describe("method handling", () => {
-  it.each(["get", "post", "POST", undefined])("allows %s", async (method) => {
-    const response = await handleRequest(clientReturning(AIRPORT), { icao: "EDDF", __ow_method: method });
+  it.each(["GET", "POST", "post"])("allows %s", async (method) => {
+    const response = await handleRequest(clientReturning(AIRPORT), { method, query: { icao: "EDDF" } });
 
     expect(response.statusCode).toBe(200);
   });
 
   it("answers 405 for anything else", async () => {
-    const response = await handleRequest(clientReturning(AIRPORT), { icao: "EDDF", __ow_method: "delete" });
+    const response = await handleRequest(clientReturning(AIRPORT), { method: "DELETE", query: { icao: "EDDF" } });
 
     expect(response.statusCode).toBe(405);
     expect(response.body).toMatchObject({ error: { code: "METHOD_NOT_ALLOWED" } });
@@ -112,7 +115,7 @@ describe("method handling", () => {
 
 describe("the airport payload", () => {
   it("answers with the assembled common format", async () => {
-    const response = await handleRequest(clientReturning(AIRPORT), { icao: "EDDF" });
+    const response = await handleRequest(clientReturning(AIRPORT), get({ icao: "EDDF" }));
     const { airport } = response.body as { airport: AirportData };
 
     expect(airport).toMatchObject({
@@ -127,7 +130,7 @@ describe("the airport payload", () => {
   });
 
   it("answers 404 when OpenStreetMap knows no aerodrome under that code", async () => {
-    const response = await handleRequest(clientReturning([]), { icao: "ZZZZ" });
+    const response = await handleRequest(clientReturning([]), get({ icao: "ZZZZ" }));
 
     expect(response.statusCode).toBe(404);
     expect(response.body).toMatchObject({ error: { code: "AERODROME_NOT_FOUND", status: 404 } });
@@ -136,33 +139,30 @@ describe("the airport payload", () => {
 
 describe("include", () => {
   it("narrows the response to the sections asked for", async () => {
-    const response = await handleRequest(clientReturning(AIRPORT), { icao: "EDDF", include: "runways,terminals" });
+    const response = await handleRequest(clientReturning(AIRPORT), get({ icao: "EDDF", include: "runways,terminals" }));
     const { airport } = response.body as { airport: Partial<AirportData> };
 
     expect(Object.keys(airport).sort()).toEqual(["icaoCode", "name", "runways", "source", "terminals"]);
   });
 
-  it("accepts an array, as a posted JSON body would supply", async () => {
-    const response = await handleRequest(clientReturning(AIRPORT), { icao: "EDDF", include: ["gates"] });
-
-    expect(Object.keys((response.body as { airport: Partial<AirportData> }).airport)).toContain("gates");
-  });
-
   it("trims and drops empty entries", async () => {
-    const response = await handleRequest(clientReturning(AIRPORT), { icao: "EDDF", include: " runways , , gates " });
+    const response = await handleRequest(
+      clientReturning(AIRPORT),
+      get({ icao: "EDDF", include: " runways , , gates " }),
+    );
 
     expect(response.statusCode).toBe(200);
   });
 
   it("answers 400 for a section it does not know, rather than silently ignoring it", async () => {
-    const response = await handleRequest(clientReturning(AIRPORT), { icao: "EDDF", include: "runways,taxiways" });
+    const response = await handleRequest(clientReturning(AIRPORT), get({ icao: "EDDF", include: "runways,taxiways" }));
 
     expect(response.statusCode).toBe(400);
     expect(response.body).toMatchObject({ error: { message: expect.stringContaining("taxiways") } });
   });
 
   it("treats an empty include as no include at all", async () => {
-    const response = await handleRequest(clientReturning(AIRPORT), { icao: "EDDF", include: "" });
+    const response = await handleRequest(clientReturning(AIRPORT), get({ icao: "EDDF", include: "" }));
     const { airport } = response.body as { airport: AirportData };
 
     expect(airport.gates).toHaveLength(1);
@@ -180,10 +180,10 @@ describe("the result size cap", () => {
     expect(() => guardResultSize({ ok: true })).not.toThrow();
   });
 
-  it("answers 413 rather than letting the platform truncate the airport", async () => {
+  it("answers 413 rather than a response Lambda would refuse to return", async () => {
     // A boundary long enough to blow past the cap on its own.
-    const huge: [number, number][] = Array.from({ length: 40_000 }, (_, index) => [index / 1e6, index / 1e6]);
-    const response = await handleRequest(clientReturning([way({ aeroway: "aerodrome" }, huge)]), { icao: "EDDF" });
+    const huge: [number, number][] = Array.from({ length: 150_000 }, (_, index) => [index / 1e6, index / 1e6]);
+    const response = await handleRequest(clientReturning([way({ aeroway: "aerodrome" }, huge)]), get({ icao: "EDDF" }));
 
     expect(response.statusCode).toBe(413);
     expect(response.body).toMatchObject({
@@ -191,28 +191,31 @@ describe("the result size cap", () => {
     });
   });
 
-  it("measures against the platform's 1 MB cap with headroom", () => {
-    expect(MAX_RESULT_BYTES).toBeLessThan(1_000_000);
+  it("stays under Lambda's 6 MB response limit", () => {
+    expect(MAX_RESULT_BYTES).toBeLessThan(6_000_000);
   });
 });
 
 describe("upstream failures", () => {
   it("reports an Overpass outage as 502", async () => {
-    const response = await handleRequest(clientThrowing(new OverpassUnavailableError()), { icao: "EDDF" });
+    const response = await handleRequest(clientThrowing(new OverpassUnavailableError()), get({ icao: "EDDF" }));
 
     expect(response.statusCode).toBe(502);
     expect(response.body).toMatchObject({ error: { code: "OVERPASS_UNAVAILABLE", status: 502 } });
   });
 
   it("never lets an unexpected throw escape as a rejection", async () => {
-    const response = await handleRequest(clientThrowing(new Error("boom")), { icao: "EDDF" });
+    const response = await handleRequest(clientThrowing(new Error("boom")), get({ icao: "EDDF" }));
 
     expect(response.statusCode).toBe(500);
     expect(response.body).toMatchObject({ error: { code: "INTERNAL_ERROR", status: 500 } });
   });
 
   it("does not leak the internal message to the caller", async () => {
-    const response = await handleRequest(clientThrowing(new Error("postgres://user:secret@host")), { icao: "EDDF" });
+    const response = await handleRequest(
+      clientThrowing(new Error("postgres://user:secret@host")),
+      get({ icao: "EDDF" }),
+    );
 
     expect(JSON.stringify(response.body)).not.toContain("secret");
   });
