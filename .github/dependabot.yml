@@ -10,6 +10,11 @@ updates:
     directory: /
     patterns: ['*']
     multi-ecosystem-group: dependencies
+    ignore:
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
   - package-ecosystem: github-actions
     directory: /
     patterns: ['*']
@@ -18,6 +23,9 @@ updates:
     directory: /
     patterns: ['*']
     multi-ecosystem-group: dependencies
+    ignore:
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
   - package-ecosystem: docker-compose
     directory: /
     patterns: ['*']
