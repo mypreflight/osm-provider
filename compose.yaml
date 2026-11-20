@@ -18,7 +18,7 @@ services:
       timeout: 500ms
 
   overpass-mock:
-    image: mockserver/mockserver:mockserver-5.15.0@sha256:0f9ef78c94894ac3e70135d156193b25e23872575d58e2228344964273b4af6b
+    image: mockserver/mockserver:mockserver-9.3.0@sha256:6cc3ca2bef67e04e618fc2732e6c9569b39651ce2a194fce4f239b398c232437
     ports:
       - '1181:1080'
     volumes:
